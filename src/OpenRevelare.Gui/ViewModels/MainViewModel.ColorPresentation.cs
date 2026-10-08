@@ -192,6 +192,7 @@ public partial class MainViewModel
             Histogram = histogram;
             // One place for every publication path, and only when it is on screen.
             Waveform = ShowsWaveformData ? WaveformData.FromBuffer(rendered.Pixels) : null;
+            Vectorscope = ShowsVectorscopeData ? VectorscopeData.FromBuffer(rendered.Pixels) : null;
             ClippingOverlay = clippingOverlay;
             ClippingScene = clippingScene;
             if (refreshSprocketMask && ShowSprocketMask && _sprocketOverlayDirty)

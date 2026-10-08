@@ -19,6 +19,7 @@ public enum ScopeDisplayMode
     Histogram,
     Waveform,
     RgbParade,
+    Vectorscope,
 }
 
 /// <summary>
@@ -1408,10 +1409,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <inheritdoc cref="ClipShadowPercent"/>
     [ObservableProperty] private double _clipHighlightPercent = Settings.Current.ClipHighlightThreshold * 100d;
 
-    /// <summary>The diagnostic occupying the single scope slot. Waveform data is computed only
-    /// for the two modes that need it; all three views inspect the final rendered positive.</summary>
+    /// <summary>The diagnostic occupying the single scope slot. Scope data is computed only for
+    /// the selected view; every view inspects the final rendered positive.</summary>
     [ObservableProperty] private ScopeDisplayMode _scopeMode;
     [ObservableProperty] private WaveformData? _waveform;
+    [ObservableProperty] private VectorscopeData? _vectorscope;
 
     public bool ShowHistogram
     {
@@ -1431,12 +1433,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         set { if (value) ScopeMode = ScopeDisplayMode.RgbParade; }
     }
 
-    private bool ShowsWaveformData => ScopeMode != ScopeDisplayMode.Histogram;
+    public bool ShowVectorscope
+    {
+        get => ScopeMode == ScopeDisplayMode.Vectorscope;
+        set { if (value) ScopeMode = ScopeDisplayMode.Vectorscope; }
+    }
+
+    private bool ShowsWaveformData =>
+        ScopeMode is ScopeDisplayMode.Waveform or ScopeDisplayMode.RgbParade;
+    private bool ShowsVectorscopeData => ScopeMode == ScopeDisplayMode.Vectorscope;
+    private bool ShowsScopeData => ScopeMode != ScopeDisplayMode.Histogram;
 
     partial void OnScopeModeChanged(ScopeDisplayMode value)
     {
-        bool showsWaveformData = value != ScopeDisplayMode.Histogram;
-        HistogramData? histogram = !showsWaveformData && _previewRenderedFrame is { } rendered
+        bool showsWaveformData = value is ScopeDisplayMode.Waveform or ScopeDisplayMode.RgbParade;
+        bool showsVectorscopeData = value == ScopeDisplayMode.Vectorscope;
+        HistogramData? histogram = value == ScopeDisplayMode.Histogram &&
+                                   _previewRenderedFrame is { } rendered
             ? HistogramData.FromFrame(rendered, CurrentTargetHeadroom)
             : Histogram;
         UpdatePresentation(() =>
@@ -1444,10 +1457,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             Waveform = showsWaveformData && _previewRenderedFrame is { } current
                 ? WaveformData.FromBuffer(current.Pixels)
                 : null;
+            Vectorscope = showsVectorscopeData && _previewRenderedFrame is { } vectorFrame
+                ? VectorscopeData.FromBuffer(vectorFrame.Pixels)
+                : null;
             Histogram = histogram;
             OnPropertyChanged(nameof(ShowHistogram));
             OnPropertyChanged(nameof(ShowWaveform));
             OnPropertyChanged(nameof(ShowRgbParade));
+            OnPropertyChanged(nameof(ShowVectorscope));
             InvalidatePresentation();
         });
     }

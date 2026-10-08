@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using System.Globalization;
 using OpenRevelare.Core;
 
 namespace OpenRevelare.Gui.Controls;
@@ -27,6 +28,7 @@ public sealed class WaveformData
     public required float[] R { get; init; }
     public required float[] G { get; init; }
     public required float[] B { get; init; }
+    public required float[] Y { get; init; }
 
     public required int Columns { get; init; }
     public required int Levels { get; init; }
@@ -66,6 +68,7 @@ public sealed class WaveformData
         var r = new float[columns * levels];
         var g = new float[columns * levels];
         var b = new float[columns * levels];
+        var luma = new float[columns * levels];
 
         Parallel.For(0, columns, column =>
         {
@@ -81,12 +84,14 @@ public sealed class WaveformData
                     r[cell + Level(data[i], levels)]++;
                     g[cell + Level(data[i + 1], levels)]++;
                     b[cell + Level(data[i + 2], levels)]++;
+                    float yv = 0.2126f * data[i] + 0.7152f * data[i + 1] + 0.0722f * data[i + 2];
+                    luma[cell + Level(yv, levels)]++;
                 }
         });
 
         return new WaveformData
         {
-            R = r, G = g, B = b, Columns = columns, Levels = levels,
+            R = r, G = g, B = b, Y = luma, Columns = columns, Levels = levels,
             ColumnSamples = Math.Max(1f, (float)width * height / columns),
         };
     }
@@ -118,7 +123,16 @@ public sealed class WaveformView : Control
 
     public WaveformData? Data { get => GetValue(DataProperty); set => SetValue(DataProperty, value); }
 
-    static WaveformView() => AffectsRender<WaveformView>(DataProperty);
+    public static readonly StyledProperty<bool> ShowScaleLabelsProperty =
+        AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowScaleLabels));
+
+    public bool ShowScaleLabels
+    {
+        get => GetValue(ShowScaleLabelsProperty);
+        set => SetValue(ShowScaleLabelsProperty, value);
+    }
+
+    static WaveformView() => AffectsRender<WaveformView>(DataProperty, ShowScaleLabelsProperty);
 
     private WriteableBitmap? _bitmap;
     private int _bitmapColumns, _bitmapLevels;
@@ -138,18 +152,42 @@ public sealed class WaveformView : Control
         ctx.FillRectangle(new SolidColorBrush(Color.FromRgb(21, 23, 26)), new Rect(0, 0, w, h));
         if (w < 2 || h < 2) return;
 
+        double left = ShowScaleLabels ? 34d : 0d;
+        double bottom = ShowScaleLabels ? 18d : 0d;
+        var plot = new Rect(left, 0, Math.Max(1d, w - left), Math.Max(1d, h - bottom));
+
         WaveformData? d = Data;
         if (d is not null && Paint(d) is { } bitmap)
             ctx.DrawImage(bitmap, new Rect(0, 0, bitmap.PixelSize.Width, bitmap.PixelSize.Height),
-                          new Rect(0, 0, w, h));
+                          plot);
 
         // The quarters of the range, as a ruler behind nothing: a waveform is read against levels,
         // and without them "how high is that sky" has no answer.
         var grid = new Pen(new SolidColorBrush(Color.FromArgb(70, 120, 126, 134)), 1);
         for (int q = 1; q < 4; q++)
         {
-            double y = h * q / 4d;
-            ctx.DrawLine(grid, new Point(0, y), new Point(w, y));
+            double y = plot.Y + plot.Height * q / 4d;
+            ctx.DrawLine(grid, new Point(plot.X, y), new Point(plot.Right, y));
+        }
+        if (ShowScaleLabels) DrawScale(ctx, plot, w, h);
+    }
+
+    private static void DrawScale(DrawingContext ctx, Rect plot, double w, double h)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb(170, 230, 232, 235));
+        for (int q = 0; q <= 4; q++)
+        {
+            string text = (100 - q * 25) + "%";
+            var ft = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                                       Typeface.Default, 10, brush);
+            double y = Math.Clamp(plot.Y + plot.Height * q / 4d - ft.Height / 2d, 0, plot.Bottom - ft.Height);
+            ctx.DrawText(ft, new Point(Math.Max(1, plot.X - ft.Width - 4), y));
+        }
+        foreach ((double x, string text) in new[] { (plot.X, "0"), (plot.X + plot.Width / 2d, "50"), (plot.Right, "100%") })
+        {
+            var ft = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                                       Typeface.Default, 10, brush);
+            ctx.DrawText(ft, new Point(Math.Clamp(x - ft.Width / 2d, plot.X, w - ft.Width), h - ft.Height - 1));
         }
     }
 
