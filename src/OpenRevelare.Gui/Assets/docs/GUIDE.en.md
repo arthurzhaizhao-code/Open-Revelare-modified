@@ -373,6 +373,20 @@ correction factors.
 Both write the same triple; whichever you press last wins — as do the two buttons of the Cast
 correction group above.
 
+#### Independent RGB channel alignment
+
+This workspace pairs with the YRGB parade. D_min and D_max above remain the physical inversion
+calibration; these controls are a manual trim and **never rewrite the current D_min**. They act on
+the Cineon signal after Stage 1 and before the print LUT, display rendering, output colour space,
+and Display edits. The YRGB parade reads this exact signal, so moving R leaves G and B fixed there.
+
+- **Independent Shift** moves one Cineon channel in 10-bit code values.
+- **Independent Gain** scales one channel around Cineon black code 95, the current D_min anchor.
+
+Open and enlarge the **YRGB** scope, then use G as the reference. The yellow **Cineon 685** line is
+the 90% diffuse-white reference on the 0–1023 ruler. Reset clears only this manual trim; it does not
+recalibrate or move D_min.
+
 > **The output range is a constant with no slider.** It sets where black lands (fixed at 10⁻²).
 > While it was adjustable it competed with the endpoints for the same degree of freedom — both
 > changed lightness and contrast at once, so the panel showed two sliders doing one job. Fixed, the

@@ -408,6 +408,26 @@
                                     <TextBlock Text="{i18n:T '对比'}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </ToggleButton>
+                            <Button Classes="icon" Click="OnRotateCcwClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '逆时针 90°'}">
+                                <ctl:Icon Data="{StaticResource IcoRotateCcw}" />
+                            </Button>
+                            <Button Classes="icon" Click="OnRotateCwClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '顺时针 90°'}">
+                                <ctl:Icon Data="{StaticResource IcoRotateCw}" />
+                            </Button>
+                            <Button Classes="icon" Click="OnFlipHClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '水平翻转'}">
+                                <ctl:Icon Data="{StaticResource IcoFlipH}" />
+                            </Button>
+                            <Button Classes="icon" Click="OnFlipVClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '竖直翻转'}">
+                                <ctl:Icon Data="{StaticResource IcoFlipV}" />
+                            </Button>
+                            <Button Classes="icon" Click="OnCropClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '裁切（拖框）'}">
+                                <ctl:Icon Data="{StaticResource IcoCrop}" />
+                            </Button>
                         </StackPanel>
 
                         <!-- Outside the native-preview airspace: legacy projects retain their
@@ -864,16 +884,22 @@
                 <Border Grid.Row="0" Padding="22,8,14,6" Background="{DynamicResource Panel2Brush}"
                         BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="0,0,0,1">
                     <StackPanel Spacing="4">
-                        <!-- One slot, two readings of it. They are not shown together: both answer
-                             "how is this frame exposed", and stacking them spent twice the height of
-                             the pinned block on one question. The switch sits under the plot, right
-                             where the eye already is. -->
+                        <!-- One slot, four readings of it. They are not shown together: all answer
+                             "how is this frame exposed", and stacking them would spend the pinned
+                             block's height repeatedly on one question. The switch sits under the
+                             plot, right where the eye already is. -->
                         <ctl:HistogramView Data="{Binding Histogram}" IsVisible="{Binding ShowHistogram}"
                                            DisplayHeadroom="{Binding DisplayHdrHeadroom}" ToolTip.Tip="{Binding HistogramTooltip}"
                                            Height="78" HorizontalAlignment="Stretch" />
                         <ctl:WaveformView Data="{Binding Waveform}" IsVisible="{Binding ShowWaveform}"
                                           Height="78" HorizontalAlignment="Stretch"
                                           ToolTip.Tip="{i18n:T '波形：横轴是画面的横向位置，纵轴是显示亮度，三通道叠加。中性是灰的，偏色会看到通道上下分开；整幅渐变（灯板不匀、翻拍架偏斜）在直方图上看不出来，在这里一眼可见。'}" />
+                        <ctl:RgbParadeView Data="{Binding Waveform}" IsVisible="{Binding ShowRgbParade}"
+                                           Height="78" HorizontalAlignment="Stretch"
+                                           ToolTip.Tip="{i18n:T 'YRGB 分量读取显示转换前的 Cineon 信号。亮度、R、G、B 从左到右分开；685 参考线是 Cineon 90% 漫反射白。'}" />
+                        <ctl:VectorscopeView Data="{Binding Vectorscope}" IsVisible="{Binding ShowVectorscope}"
+                                             Height="78" HorizontalAlignment="Stretch"
+                                             ToolTip.Tip="{i18n:T '矢量图：角度表示色相，离中心的距离表示饱和度；肤色线用于判断肤色方向。'}" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4" Margin="0,2,0,0">
                             <ToggleButton Name="HistogramBtn" Padding="6,1" Height="19" MinHeight="19"
                                           IsChecked="{Binding ShowHistogram, Mode=TwoWay}"
@@ -887,6 +913,23 @@
                                           ToolTip.Tip="{i18n:T '波形：同样的亮度分布，但保留横向位置。判断偏色是整幅均匀还是渐变。'}">
                                 <TextBlock Text="{i18n:T '波形'}" FontSize="10" VerticalAlignment="Center" />
                             </ToggleButton>
+                            <ToggleButton Name="RgbParadeBtn" Padding="6,1" Height="19" MinHeight="19"
+                                          IsChecked="{Binding ShowRgbParade, Mode=TwoWay}"
+                                          IsEnabled="{Binding HasImage}"
+                                          ToolTip.Tip="{i18n:T 'YRGB 分量：亮度和三个通道横向分开并共享纵轴，便于手工对齐。'}">
+                                <TextBlock Text="{i18n:T 'YRGB'}" FontSize="10" VerticalAlignment="Center" />
+                            </ToggleButton>
+                            <ToggleButton Name="VectorscopeBtn" Padding="6,1" Height="19" MinHeight="19"
+                                          IsChecked="{Binding ShowVectorscope, Mode=TwoWay}"
+                                          IsEnabled="{Binding HasImage}"
+                                          ToolTip.Tip="{i18n:T '矢量图：查看色相、饱和度和肤色方向。'}">
+                                <TextBlock Text="{i18n:T '矢量图'}" FontSize="10" VerticalAlignment="Center" />
+                            </ToggleButton>
+                            <Button Padding="6,1" Height="19" MinHeight="19" Click="OnExpandScopeClick"
+                                    IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '放大当前示波器'}">
+                                <TextBlock Text="⤢" FontSize="12" VerticalAlignment="Center" />
+                            </Button>
                         </StackPanel>
                         <!-- Lightroom's HDR Limit, where Lightroom puts it: under the histogram whose
                              right quarter it governs, only while HDR is on. Stops above SDR white;
@@ -1026,18 +1069,6 @@
                                         <TextBlock Classes="groupHint" Text="{Binding FilmBaseText}"
                                                    IsVisible="{Binding FilmBaseText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    TextWrapping="Wrap" />
-                                        <!-- 只有这一组 RGB。片基透射率 T_base 不再给滑块：它与
-                                             D_min 描述的是同一件事——黑端在哪、暗部偏什么色（实测
-                                             改任一个都在动同一个量）。T_base 由【片基采样】写入，
-                                             D_min 才是与 D_max 同量纲、可直接相减的那个。-->
-                                        <Expander Header="{i18n:T '逐通道'}" Theme="{StaticResource SubExpander}" Margin="0,4,0,0"
-                                                  IsVisible="{Binding IsColourRoll}">
-                                            <StackPanel Spacing="1">
-                                                <ctl:SliderRow Label="R" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinR}" TrackBrush="{DynamicResource TrackRBrush}" />
-                                                <ctl:SliderRow Label="G" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinG}" TrackBrush="{DynamicResource TrackGBrush}" />
-                                                <ctl:SliderRow Label="B" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinB}" TrackBrush="{DynamicResource TrackBBrush}" />
-                                            </StackPanel>
-                                        </Expander>
                                     </StackPanel>
                                 </Expander>
 
@@ -1068,14 +1099,34 @@
                                         <TextBlock Classes="groupHint" Text="{Binding HighlightConfidenceText}"
                                                    IsVisible="{Binding HighlightConfidenceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    TextWrapping="Wrap" />
-                                        <Expander Header="{i18n:T '逐通道'}" Theme="{StaticResource SubExpander}" Margin="0,4,0,0"
-                                                  IsVisible="{Binding IsColourRoll}">
+                                    </StackPanel>
+                                </Expander>
+
+                                <!-- Independent Cineon alignment. The dedicated YRGB parade reads
+                                     this signal before display rendering and output matrices. -->
+                                <Expander Header="{i18n:T 'RGB 三通道独立对齐'}" IsExpanded="True" Tag="3"
+                                          IsVisible="{Binding IsColourRoll}"
+                                          ToolTip.Tip="{i18n:T '配合 YRGB 分量图手工对齐显示转换前的 Cineon 信号。每次只影响被调的一个通道，不会改写自动 D_min / D_max。'}">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Classes="groupHint" TextWrapping="Wrap"
+                                                   Text="{i18n:T '打开 YRGB 分量图并放大，以 G 为参考。图中是显示转换前的 Cineon 码值；调整 R 时 G/B 保持原位。Gain 以当前 D_min 对应的码值 95 为轴，自动标定仍由上面的 D_min / D_max 负责。'}" />
+                                        <Expander Header="{i18n:T '独立 Shift（10-bit 码值）'}" Theme="{StaticResource SubExpander}" IsExpanded="True"
+                                                  ToolTip.Tip="{i18n:T '只移动对应通道的 Cineon 码值；其它两个通道不参与计算。'}">
                                             <StackPanel Spacing="1">
-                                                <ctl:SliderRow Label="R" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxR}" TrackBrush="{DynamicResource TrackRBrush}" ToolTip.Tip="{i18n:T '高级：单独改变红色亮端，会改变高光色偏。'}" />
-                                                <ctl:SliderRow Label="G" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxG}" TrackBrush="{DynamicResource TrackGBrush}" ToolTip.Tip="{i18n:T '高级：单独改变绿色亮端，会改变高光色偏。'}" />
-                                                <ctl:SliderRow Label="B" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxB}" TrackBrush="{DynamicResource TrackBBrush}" ToolTip.Tip="{i18n:T '高级：单独改变蓝色亮端，会改变高光色偏。'}" />
+                                                <ctl:SliderRow Label="R" Minimum="-1023" Maximum="1023" Decimals="0" Increment="1" DefaultValue="0" Value="{Binding RgbAlignShiftR}" TrackBrush="{DynamicResource TrackRBrush}" Bipolar="True" />
+                                                <ctl:SliderRow Label="G" Minimum="-1023" Maximum="1023" Decimals="0" Increment="1" DefaultValue="0" Value="{Binding RgbAlignShiftG}" TrackBrush="{DynamicResource TrackGBrush}" Bipolar="True" />
+                                                <ctl:SliderRow Label="B" Minimum="-1023" Maximum="1023" Decimals="0" Increment="1" DefaultValue="0" Value="{Binding RgbAlignShiftB}" TrackBrush="{DynamicResource TrackBBrush}" Bipolar="True" />
                                             </StackPanel>
                                         </Expander>
+                                        <Expander Header="{i18n:T '独立 Gain'}" Theme="{StaticResource SubExpander}" IsExpanded="True"
+                                                  ToolTip.Tip="{i18n:T '以 Cineon 黑端 95 为轴缩放对应通道；当前 D_min 保持不动，其它两个通道不参与计算。'}">
+                                            <StackPanel Spacing="1">
+                                                <ctl:SliderRow Label="R" Minimum="0.5" Maximum="1.5" Decimals="3" Increment="0.001" DefaultValue="1" Value="{Binding RgbAlignGainR}" TrackBrush="{DynamicResource TrackRBrush}" />
+                                                <ctl:SliderRow Label="G" Minimum="0.5" Maximum="1.5" Decimals="3" Increment="0.001" DefaultValue="1" Value="{Binding RgbAlignGainG}" TrackBrush="{DynamicResource TrackGBrush}" />
+                                                <ctl:SliderRow Label="B" Minimum="0.5" Maximum="1.5" Decimals="3" Increment="0.001" DefaultValue="1" Value="{Binding RgbAlignGainB}" TrackBrush="{DynamicResource TrackBBrush}" />
+                                            </StackPanel>
+                                        </Expander>
+                                        <Button Content="{i18n:T '重置独立对齐'}" Click="OnResetRgbAlignmentClick" />
                                     </StackPanel>
                                 </Expander>
 
@@ -1085,7 +1136,7 @@
                                      与高光采样互为替代，后按的生效。白平衡不在这里——那是场景光源的事，在 Display。-->
                                 <!-- Header and hint follow the film type: the grey card is an exposure
                                      anchor on a black-and-white roll, not a cast correction. -->
-                                <Expander Header="{Binding CastCardHeader}" IsExpanded="True" Tag="3"
+                                <Expander Header="{Binding CastCardHeader}" IsExpanded="True" Tag="4"
                                           ToolTip.Tip="{Binding CastCardHint}">
                                     <StackPanel Spacing="2">
                                         <Grid ColumnDefinitions="*,*">

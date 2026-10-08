@@ -995,6 +995,8 @@ public partial class MainViewModel
         TBaseR = p.TBase[0]; TBaseG = p.TBase[1]; TBaseB = p.TBase[2];
         DMinPerChannel = (double[])p.DMinPerChannel.Clone();
         DMaxPerChannel = (double[])p.DMaxPerChannel.Clone();
+        RgbAlignShiftR = p.RgbAlignShift[0]; RgbAlignShiftG = p.RgbAlignShift[1]; RgbAlignShiftB = p.RgbAlignShift[2];
+        RgbAlignGainR = p.RgbAlignGain[0]; RgbAlignGainG = p.RgbAlignGain[1]; RgbAlignGainB = p.RgbAlignGain[2];
         // 存下来的 wb_gains 照常载入、照常参与渲染，并回显到 Display 的色温/色调滑块——旧工程的
         // 观感逐位不变。
         //

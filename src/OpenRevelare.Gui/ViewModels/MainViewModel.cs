@@ -14,6 +14,14 @@ using OpenRevelare.Presentation;
 
 namespace OpenRevelare.Gui.ViewModels;
 
+public enum ScopeDisplayMode
+{
+    Histogram,
+    Waveform,
+    RgbParade,
+    Vectorscope,
+}
+
 /// <summary>
 /// Single-frame workflow: import a RAW/TIFF negative, calibrate the density-domain
 /// inversion (Stage 1: film base / WB / d_max / grade), adjust the positive
@@ -1232,6 +1240,29 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     partial void OnDMaxGChanged(double value) { InvalidateHighlightEndpointDiagnostics(); SyncScalarsFromEndpoints(); ScheduleRender(); }
     partial void OnDMaxBChanged(double value) { InvalidateHighlightEndpointDiagnostics(); SyncScalarsFromEndpoints(); ScheduleRender(); }
 
+    // Final-output RGB alignment. These are intentionally independent of D_min/D_max: automatic
+    // calibration remains an inspectable starting point, while the manual trim is applied only
+    // after all matrices so one slider cannot move another parade channel.
+    [ObservableProperty] private double _rgbAlignShiftR;
+    [ObservableProperty] private double _rgbAlignShiftG;
+    [ObservableProperty] private double _rgbAlignShiftB;
+    [ObservableProperty] private double _rgbAlignGainR = 1.0;
+    [ObservableProperty] private double _rgbAlignGainG = 1.0;
+    [ObservableProperty] private double _rgbAlignGainB = 1.0;
+    partial void OnRgbAlignShiftRChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignShiftGChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignShiftBChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignGainRChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignGainGChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignGainBChanged(double value) => ScheduleRender();
+
+    /// <summary>Reset only the manual final-output trim; the measured D_min/D_max stay untouched.</summary>
+    public void ResetRgbAlignment()
+    {
+        RgbAlignShiftR = RgbAlignShiftG = RgbAlignShiftB = 0.0;
+        RgbAlignGainR = RgbAlignGainG = RgbAlignGainB = 1.0;
+    }
+
     /// <summary>暗端三个分量的数组视图。同一份数据，不是第二个字段。</summary>
     public double[] DMinPerChannel
     {
@@ -1401,39 +1432,96 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <inheritdoc cref="ClipShadowPercent"/>
     [ObservableProperty] private double _clipHighlightPercent = Settings.Current.ClipHighlightThreshold * 100d;
 
-    /// <summary>
-    /// Whether the waveform is shown under the histogram. Off by default and computed only while
-    /// on: it is a per-pixel pass on every published preview, and most of the time the histogram
-    /// answers the question.
-    /// </summary>
-    [ObservableProperty] private bool _showWaveform;
+    /// <summary>The diagnostic occupying the single scope slot. Histogram and vectorscope inspect
+    /// the rendered positive; waveform and YRGB inspect the pre-display Cineon signal used for
+    /// channel alignment.</summary>
+    [ObservableProperty] private ScopeDisplayMode _scopeMode;
+    [ObservableProperty] private ScopeScaleMode _scopeScale = ScopeScaleMode.TenBit;
     [ObservableProperty] private WaveformData? _waveform;
+    private WaveformData? _cineonWaveform;
+    [ObservableProperty] private VectorscopeData? _vectorscope;
 
-    /// <summary>
-    /// The other half of the scope switch. The two share one slot in the panel — they answer the
-    /// same question from two directions and nobody reads both at once — so this is the inverse of
-    /// <see cref="ShowWaveform"/> rather than a second flag that could disagree with it.
-    /// </summary>
     public bool ShowHistogram
     {
-        get => !ShowWaveform;
-        set => ShowWaveform = !value;
+        get => ScopeMode == ScopeDisplayMode.Histogram;
+        set { if (value) ScopeMode = ScopeDisplayMode.Histogram; }
     }
 
-    partial void OnShowWaveformChanged(bool value)
+    public bool ShowWaveform
     {
-        HistogramData? histogram = !value && _previewRenderedFrame is { } rendered
+        get => ScopeMode == ScopeDisplayMode.Waveform;
+        set { if (value) ScopeMode = ScopeDisplayMode.Waveform; }
+    }
+
+    public bool ShowRgbParade
+    {
+        get => ScopeMode == ScopeDisplayMode.RgbParade;
+        set { if (value) ScopeMode = ScopeDisplayMode.RgbParade; }
+    }
+
+    public bool ShowVectorscope
+    {
+        get => ScopeMode == ScopeDisplayMode.Vectorscope;
+        set { if (value) ScopeMode = ScopeDisplayMode.Vectorscope; }
+    }
+
+    public bool ShowTenBitScopeScale
+    {
+        get => ScopeScale == ScopeScaleMode.TenBit;
+        set { if (value) ScopeScale = ScopeScaleMode.TenBit; }
+    }
+
+    public bool ShowPercentScopeScale
+    {
+        get => ScopeScale == ScopeScaleMode.Percent;
+        set { if (value) ScopeScale = ScopeScaleMode.Percent; }
+    }
+
+    public bool ShowIreScopeScale
+    {
+        get => ScopeScale == ScopeScaleMode.Ire;
+        set { if (value) ScopeScale = ScopeScaleMode.Ire; }
+    }
+
+    public bool ShowsSignalScaleControls =>
+        ScopeMode is ScopeDisplayMode.Waveform or ScopeDisplayMode.RgbParade;
+
+    private bool ShowsWaveformData =>
+        ScopeMode is ScopeDisplayMode.Waveform or ScopeDisplayMode.RgbParade;
+    private bool ShowsVectorscopeData => ScopeMode == ScopeDisplayMode.Vectorscope;
+    private bool ShowsScopeData => ScopeMode != ScopeDisplayMode.Histogram;
+
+    partial void OnScopeModeChanged(ScopeDisplayMode value)
+    {
+        bool showsWaveformData = value is ScopeDisplayMode.Waveform or ScopeDisplayMode.RgbParade;
+        bool showsVectorscopeData = value == ScopeDisplayMode.Vectorscope;
+        bool needsCineonRender = showsWaveformData && _cineonWaveform is null && _previewWorking is not null;
+        HistogramData? histogram = value == ScopeDisplayMode.Histogram &&
+                                   _previewRenderedFrame is { } rendered
             ? HistogramData.FromFrame(rendered, CurrentTargetHeadroom)
             : Histogram;
         UpdatePresentation(() =>
         {
-            Waveform = value && _previewRenderedFrame is { } current
-                ? WaveformData.FromBuffer(current.Pixels)
+            Waveform = showsWaveformData ? _cineonWaveform : null;
+            Vectorscope = showsVectorscopeData && _previewRenderedFrame is { } vectorFrame
+                ? VectorscopeData.FromBuffer(vectorFrame.Pixels)
                 : null;
             Histogram = histogram;
             OnPropertyChanged(nameof(ShowHistogram));
+            OnPropertyChanged(nameof(ShowWaveform));
+            OnPropertyChanged(nameof(ShowRgbParade));
+            OnPropertyChanged(nameof(ShowVectorscope));
+            OnPropertyChanged(nameof(ShowsSignalScaleControls));
             InvalidatePresentation();
         });
+        if (needsCineonRender) RenderNow();
+    }
+
+    partial void OnScopeScaleChanged(ScopeScaleMode value)
+    {
+        OnPropertyChanged(nameof(ShowTenBitScopeScale));
+        OnPropertyChanged(nameof(ShowPercentScopeScale));
+        OnPropertyChanged(nameof(ShowIreScopeScale));
     }
 
     partial void OnClipShadowPercentChanged(double value) => ApplyClipThresholds();
@@ -2003,6 +2091,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         TBase = TBaseArr(),
         DMinPerChannel = DMinPerChannel,
         DMaxPerChannel = DMaxPerChannel,
+        RgbAlignShift = new[] { RgbAlignShiftR, RgbAlignShiftG, RgbAlignShiftB },
+        RgbAlignGain = new[] { RgbAlignGainR, RgbAlignGainG, RgbAlignGainB },
         // Stage 2 — 色温/色调 → geomean-1 gains; 黑/白场 → levels
         WbGains = WbMath.TempTintToGains(Temp, Tint),
         ExposureEv = ExposureEv,

@@ -20,6 +20,8 @@ namespace OpenRevelare.Gui.Views;
 
 public partial class MainWindow : Window
 {
+    private ScopeWindow? _scopeWindow;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -161,6 +163,24 @@ public partial class MainWindow : Window
         SyncViewerBgChecks();
         InitializeWindowsPresentation();
     }
+
+    private void OnExpandScopeClick(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null) return;
+        if (_scopeWindow is { } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        var window = new ScopeWindow { DataContext = Vm };
+        _scopeWindow = window;
+        window.Closed += (_, _) => _scopeWindow = null;
+        window.Show(this);
+    }
+
+    private void OnResetRgbAlignmentClick(object? sender, RoutedEventArgs e)
+        => Vm?.ResetRgbAlignment();
 
     /// <summary>
     /// First-ever launch: show the onboarding once (persisted by a marker file).

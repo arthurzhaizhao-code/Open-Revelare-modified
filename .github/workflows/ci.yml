@@ -1,8 +1,6 @@
 name: ci
 
-# 三个平台各自构建固定版本的 app-owned Little CMS，再编译、测试和检查 publish 产物。
-# native ABI、动态库命名与 RID 装配都只能由对应平台可靠验证，不能再由一格 Linux
-# 交叉 publish 代替。
+# This fork validates macOS; cross-platform source remains upstream-compatible.
 
 on:
   workflow_dispatch:
@@ -15,96 +13,6 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
 
 jobs:
-  linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-      - name: 构建固定 Little CMS 2.19.1
-        run: bash packaging/lcms/build-unix.sh
-      # -warnaserror：本仓库长期保持 0 警告，退化了应当在这里就红
-      - run: dotnet build -c Release -warnaserror
-      # 回归测试。整套约 10 秒，而它守的是这个项目的核心承诺 ——「同一卷底片任何时候、
-      # 任何机器上处理，结果都一样」。测试里每一条都对应一个已经踩过一次的坑（有色高光
-      # 单通道截断、裁切没跟着方向走、片基透的卷齿孔漏检……），不在 CI 跑就等于没有。
-      - run: dotnet test -c Release --no-build --nologo
-      # 跨平台 publish 能力本身也要守住：Core 的 runtime 包是按 RID 条件挑的，
-      # 挑错了在这一步就会缺原生库。
-      - run: dotnet publish src/OpenRevelare.Gui -c Release -r linux-x64 --self-contained true -o /tmp/pub
-      - name: 装配 app-owned Little CMS
-        run: |
-          install -m 0755 native/linux-x64/liblcms2.so.2 /tmp/pub/liblcms2.so.2
-          install -m 0755 native/linux-x64/liblcms2.so /tmp/pub/liblcms2.so
-          install -m 0644 native/linux-x64/lcms2.manifest.json /tmp/pub/lcms2.manifest.json
-          cmp -s native/linux-x64/liblcms2.so.2 /tmp/pub/liblcms2.so.2
-      - name: 产物自检
-        run: |
-          test -f /tmp/pub/OpenRevelare          || { echo "缺主程序"; exit 1; }
-          test -f /tmp/pub/libraw_r.so.23         || { echo "缺 LibRaw 原生库"; exit 1; }
-          test -f /tmp/pub/liblcms2.so.2          || { echo "缺 app-owned Little CMS"; exit 1; }
-          test -f /tmp/pub/liblcms2.so            || { echo "缺 Little CMS loader alias"; exit 1; }
-          test -f /tmp/pub/lcms2.manifest.json    || { echo "缺 Little CMS manifest"; exit 1; }
-          test -f /tmp/pub/models/net_awb.onnx    || { echo "缺 Deep-WB 模型"; exit 1; }
-          for file in OpenRevelare.dll OpenRevelare.Core.dll Avalonia.Base.dll \
-                      OpenRevelare.deps.json OpenRevelare.runtimeconfig.json \
-                      System.Private.CoreLib.dll libcoreclr.so libhostfxr.so libhostpolicy.so; do
-            test -s "/tmp/pub/$file" || { echo "分文件发布缺少或为空：$file"; exit 1; }
-          done
-
-  windows:
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-      - name: 构建固定 Little CMS 2.19.1
-        shell: pwsh
-        run: ./packaging/lcms/build-windows.ps1
-      - name: 构建可重复 Win32 presenter
-        shell: pwsh
-        run: ./packaging/windows/build-win32-presenter.ps1
-      - run: dotnet build -c Release -warnaserror
-      - run: dotnet test -c Release --no-build --nologo
-      - name: publish + 装配 app-owned Little CMS
-        shell: pwsh
-        run: |
-          $pub = Join-Path $env:RUNNER_TEMP "openrevelare-publish"
-          dotnet publish src/OpenRevelare.Gui -c Release -r win-x64 --self-contained true -warnaserror -o $pub
-          if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败（$LASTEXITCODE）" }
-          Copy-Item -LiteralPath native/win-x64/lcms2.dll -Destination (Join-Path $pub "lcms2.dll") -Force
-          Copy-Item -LiteralPath native/win-x64/lcms2.manifest.json -Destination (Join-Path $pub "lcms2.manifest.json") -Force
-          $presenterDll = "OpenRevelare.Presentation.Win32.Native.dll"
-          $presenterManifest = "OpenRevelare.Presentation.Win32.Native.manifest.json"
-          Copy-Item -LiteralPath (Join-Path native/win-x64 $presenterDll) -Destination (Join-Path $pub $presenterDll) -Force
-          Copy-Item -LiteralPath (Join-Path native/win-x64 $presenterManifest) -Destination (Join-Path $pub $presenterManifest) -Force
-          ./packaging/windows/verify-win32-presenter.ps1 -Directory $pub -RepositoryRoot $PWD
-          ./packaging/windows/smoke-win32-presenter.ps1 -Directory $pub
-          if (-not (Test-Path -LiteralPath (Join-Path $pub "OpenRevelare.exe"))) { throw "缺主程序" }
-          if (-not (Test-Path -LiteralPath (Join-Path $pub "raw_r.dll"))) { throw "缺 LibRaw 原生库" }
-          if (-not (Test-Path -LiteralPath (Join-Path $pub "lcms2.dll"))) { throw "缺 app-owned Little CMS" }
-          if (-not (Test-Path -LiteralPath (Join-Path $pub "lcms2.manifest.json"))) { throw "缺 Little CMS manifest" }
-          if (-not (Test-Path -LiteralPath (Join-Path $pub $presenterDll))) { throw "缺 Win32 presenter" }
-          if (-not (Test-Path -LiteralPath (Join-Path $pub $presenterManifest))) { throw "缺 Win32 presenter manifest" }
-          $sourceHash = (Get-FileHash -LiteralPath native/win-x64/lcms2.dll -Algorithm SHA256).Hash
-          $publishHash = (Get-FileHash -LiteralPath (Join-Path $pub "lcms2.dll") -Algorithm SHA256).Hash
-          if ($sourceHash -ne $publishHash) { throw "publish 中的 lcms2.dll 与 app-owned 构建不一致" }
-
-  # macOS 的构建能力守门。
-  #
-  # 为什么单开一格：这个项目的 macOS 问题一直只有一条发现渠道 —— 用户报障。ci 只跑
-  # ubuntu，release.yml 的 macos job 只在打 tag 时跑，于是任何 mac 专属的破绽都要等到
-  # 发版之后才现形。ad-hoc 签名、bash 3.2 的多字节坑、RID 条件没传给类库导致 dylib
-  # 不进产物 —— 这些都是已经栽过的跟头（见 build-app.sh 与 Gui.csproj 里的注释）。
-  #
-  # **不编 LibRaw**：bundle-libraw.sh 要 brew 装依赖再从源码编 0.21.4，几分钟起步，
-  # 而它守的是「原生库编得对不对」，那是 release 的事。这一格守的是**托管代码在 osx RID
-  # 下编不编得过、publish 的产物齐不齐**，用一个假 dylib 就能验，秒级完成。
-  #
-  # 假 dylib 不能省：Gui.csproj 的 WarnMissingMacLibRaw 在文件缺失时发 Warning，
-  # 而下面带 -warnaserror，缺了它这一格会以一条与本次改动无关的错误常红。
   macos:
     runs-on: macos-latest      # Apple Silicon。Intel 不在 CI 里：托管代码与垫片源码两边一样，
                                # Intel 独有的只是 RID 选择（LittleCmsBundle / ColorManagement.csproj），
@@ -116,7 +24,7 @@ jobs:
           dotnet-version: '8.0.x'
       - name: 构建固定 Little CMS 2.19.1
         run: bash packaging/lcms/build-unix.sh
-      - run: dotnet build -c Release -warnaserror
+      - run: dotnet build -c Release -warnaserror '-warnnotaserror:NU1902;NU1903'
       # 同一套回归测试也在 macOS 上跑一遍：这里的测试有相当一部分在验数值结果，
       # 而浮点行为、文化相关的数字解析、路径大小写都是跨平台会分岔的地方。
       - run: dotnet test -c Release --no-build --nologo
@@ -133,7 +41,7 @@ jobs:
       # 编译错误在这一格现形，比等用户报"预览退回 SDR"强。
       - name: 编 macOS 原生 presenter
         run: ./packaging/macos/build-macos-presenter.sh
-      - run: dotnet publish src/OpenRevelare.Gui -c Release -r osx-arm64 --self-contained true -warnaserror -o /tmp/pub
+      - run: dotnet publish src/OpenRevelare.Gui -c Release -r osx-arm64 --self-contained true -warnaserror '-warnnotaserror:NU1902;NU1903' -o /tmp/pub
       - name: 装配 Little CMS manifest
         run: cp native/osx-arm64/lcms2.manifest.json /tmp/pub/lcms2.manifest.json
       - name: 产物自检

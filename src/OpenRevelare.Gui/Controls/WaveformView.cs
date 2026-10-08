@@ -3,9 +3,37 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using System.Globalization;
 using OpenRevelare.Core;
 
 namespace OpenRevelare.Gui.Controls;
+
+/// <summary>The vertical ruler used by signal-level scopes.</summary>
+public enum ScopeScaleMode
+{
+    TenBit,
+    Percent,
+    Ire,
+}
+
+internal static class ScopeScale
+{
+    public static int Divisions(ScopeScaleMode mode) => mode == ScopeScaleMode.TenBit ? 8 : 4;
+
+    public static string Label(ScopeScaleMode mode, int tick, int divisions)
+    {
+        double fraction = 1d - tick / (double)divisions;
+        return mode switch
+        {
+            ScopeScaleMode.TenBit => Math.Round(fraction * 1023d,
+                                                MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture),
+            ScopeScaleMode.Ire => Math.Round(fraction * 100d,
+                                             MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture),
+            _ => Math.Round(fraction * 100d,
+                            MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture) + "%",
+        };
+    }
+}
 
 /// <summary>
 /// A waveform: for each COLUMN of the picture, how its samples are distributed from black to white.
@@ -27,6 +55,7 @@ public sealed class WaveformData
     public required float[] R { get; init; }
     public required float[] G { get; init; }
     public required float[] B { get; init; }
+    public required float[] Y { get; init; }
 
     public required int Columns { get; init; }
     public required int Levels { get; init; }
@@ -41,18 +70,18 @@ public sealed class WaveformData
     /// </summary>
     public required float ColumnSamples { get; init; }
 
-    /// <summary>Columns are the horizontal resolution of the plot. 256 is finer than the panel is
-    /// wide, so the plot is never the limiting factor, and coarse enough to stay cheap.</summary>
-    public const int DefaultColumns = 256;
+    /// <summary>Horizontal scope resolution. The same data also feeds the enlarged scope window;
+    /// 512 columns keep its traces crisp instead of scaling a 256-column preview bitmap.</summary>
+    public const int DefaultColumns = 512;
 
-    /// <summary>Levels are the vertical resolution. 160 over a ~70 px plot means every drawn row
-    /// has samples behind it rather than being interpolated.</summary>
-    public const int DefaultLevels = 160;
+    /// <summary>Vertical scope resolution. 512 preserves code-level shape in the enlarged view;
+    /// compact panels simply downsample this bitmap.</summary>
+    public const int DefaultLevels = 512;
 
     /// <summary>
-    /// Bin a display-referred [0,1] RGB buffer. Values above white (an extended render) are pinned
-    /// to the top row: the waveform is a diagnostic of the picture's SHAPE, and an HDR frame's
-    /// headroom belongs to the histogram, which has an axis for it.
+    /// Bin a normalised RGB signal. Values above the selected 0–1 scope range are pinned to the
+    /// top row. Waveform/parade currently feed this with normalised Cineon code values; the method
+    /// remains encoding-agnostic so tests and other diagnostic callers can reuse it.
     ///
     /// Parallelised by output COLUMN, so no two tasks touch the same cell and nothing has to be
     /// merged afterwards.
@@ -66,6 +95,7 @@ public sealed class WaveformData
         var r = new float[columns * levels];
         var g = new float[columns * levels];
         var b = new float[columns * levels];
+        var luma = new float[columns * levels];
 
         Parallel.For(0, columns, column =>
         {
@@ -81,12 +111,14 @@ public sealed class WaveformData
                     r[cell + Level(data[i], levels)]++;
                     g[cell + Level(data[i + 1], levels)]++;
                     b[cell + Level(data[i + 2], levels)]++;
+                    float yv = 0.2126f * data[i] + 0.7152f * data[i + 1] + 0.0722f * data[i + 2];
+                    luma[cell + Level(yv, levels)]++;
                 }
         });
 
         return new WaveformData
         {
-            R = r, G = g, B = b, Columns = columns, Levels = levels,
+            R = r, G = g, B = b, Y = luma, Columns = columns, Levels = levels,
             ColumnSamples = Math.Max(1f, (float)width * height / columns),
         };
     }
@@ -118,7 +150,26 @@ public sealed class WaveformView : Control
 
     public WaveformData? Data { get => GetValue(DataProperty); set => SetValue(DataProperty, value); }
 
-    static WaveformView() => AffectsRender<WaveformView>(DataProperty);
+    public static readonly StyledProperty<bool> ShowScaleLabelsProperty =
+        AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowScaleLabels));
+
+    public bool ShowScaleLabels
+    {
+        get => GetValue(ShowScaleLabelsProperty);
+        set => SetValue(ShowScaleLabelsProperty, value);
+    }
+
+    public static readonly StyledProperty<ScopeScaleMode> ScaleModeProperty =
+        AvaloniaProperty.Register<WaveformView, ScopeScaleMode>(nameof(ScaleMode), ScopeScaleMode.TenBit);
+
+    public ScopeScaleMode ScaleMode
+    {
+        get => GetValue(ScaleModeProperty);
+        set => SetValue(ScaleModeProperty, value);
+    }
+
+    static WaveformView() =>
+        AffectsRender<WaveformView>(DataProperty, ShowScaleLabelsProperty, ScaleModeProperty);
 
     private WriteableBitmap? _bitmap;
     private int _bitmapColumns, _bitmapLevels;
@@ -130,7 +181,7 @@ public sealed class WaveformView : Control
     /// standard way a waveform monitor keeps thin traces visible without blowing out thick ones.
     /// At 0.3 a cell holding 1% of its column still reads at a quarter brightness.
     /// </summary>
-    private const float TraceGamma = 0.3f;
+    private const float TraceGamma = 0.22f;
 
     public override void Render(DrawingContext ctx)
     {
@@ -138,18 +189,46 @@ public sealed class WaveformView : Control
         ctx.FillRectangle(new SolidColorBrush(Color.FromRgb(21, 23, 26)), new Rect(0, 0, w, h));
         if (w < 2 || h < 2) return;
 
+        double left = ShowScaleLabels ? 34d : 0d;
+        double bottom = ShowScaleLabels ? 18d : 0d;
+        var plot = new Rect(left, 0, Math.Max(1d, w - left), Math.Max(1d, h - bottom));
+
         WaveformData? d = Data;
         if (d is not null && Paint(d) is { } bitmap)
             ctx.DrawImage(bitmap, new Rect(0, 0, bitmap.PixelSize.Width, bitmap.PixelSize.Height),
-                          new Rect(0, 0, w, h));
+                          plot);
 
-        // The quarters of the range, as a ruler behind nothing: a waveform is read against levels,
-        // and without them "how high is that sky" has no answer.
+        // Keep the compact panel at quarters. The enlarged 10-bit ruler gets eighths so the
+        // familiar 0, 128 … 896, 1023 video-code scale can be read without estimating.
         var grid = new Pen(new SolidColorBrush(Color.FromArgb(70, 120, 126, 134)), 1);
-        for (int q = 1; q < 4; q++)
+        int divisions = ShowScaleLabels ? ScopeScale.Divisions(ScaleMode) : 4;
+        for (int q = 1; q < divisions; q++)
         {
-            double y = h * q / 4d;
-            ctx.DrawLine(grid, new Point(0, y), new Point(w, y));
+            double y = plot.Y + plot.Height * q / divisions;
+            ctx.DrawLine(grid, new Point(plot.X, y), new Point(plot.Right, y));
+        }
+        if (ShowScaleLabels) DrawScale(ctx, plot, w, h, ScaleMode);
+    }
+
+    private static void DrawScale(DrawingContext ctx, Rect plot, double w, double h,
+                                  ScopeScaleMode scaleMode)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb(170, 230, 232, 235));
+        int divisions = ScopeScale.Divisions(scaleMode);
+        for (int q = 0; q <= divisions; q++)
+        {
+            string text = ScopeScale.Label(scaleMode, q, divisions);
+            var ft = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                                       Typeface.Default, 10, brush);
+            double y = Math.Clamp(plot.Y + plot.Height * q / divisions - ft.Height / 2d,
+                                  0, plot.Bottom - ft.Height);
+            ctx.DrawText(ft, new Point(Math.Max(1, plot.X - ft.Width - 4), y));
+        }
+        foreach ((double x, string text) in new[] { (plot.X, "0"), (plot.X + plot.Width / 2d, "50"), (plot.Right, "100%") })
+        {
+            var ft = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                                       Typeface.Default, 10, brush);
+            ctx.DrawText(ft, new Point(Math.Clamp(x - ft.Width / 2d, plot.X, w - ft.Width), h - ft.Height - 1));
         }
     }
 

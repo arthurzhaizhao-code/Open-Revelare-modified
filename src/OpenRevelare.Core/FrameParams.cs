@@ -154,6 +154,14 @@ public sealed class FrameParams
     public double[] DMinPerChannel { get; set; } = { 0.0, 0.0, 0.0 };
 
     /// <summary>
+    /// Independent Cineon-signal RGB alignment after the measured endpoints and before display
+    /// rendering. Shift is expressed in 10-bit code units and gain pivots around Cineon black
+    /// (code 95). These controls never rewrite DMinPerChannel or DMaxPerChannel.
+    /// </summary>
+    public double[] RgbAlignShift { get; set; } = { 0.0, 0.0, 0.0 };
+    public double[] RgbAlignGain { get; set; } = { 1.0, 1.0, 1.0 };
+
+    /// <summary>
     /// 这卷是黑白负片：三个通道承载的是同一张银影，不是三层染料。
     ///
     /// 打开后，线性域校正做完、进密度域之前把三通道折成一路亮度信号，反相只用一对端点
@@ -538,6 +546,8 @@ public sealed class FrameParams
         TBase = (double[])TBase.Clone(),
         DMaxPerChannel = (double[])DMaxPerChannel.Clone(),
         DMinPerChannel = (double[])DMinPerChannel.Clone(),
+        RgbAlignShift = (double[])RgbAlignShift.Clone(),
+        RgbAlignGain = (double[])RgbAlignGain.Clone(),
         ChromaChannelScale = (double[])ChromaChannelScale.Clone(),
         Monochrome = Monochrome,
         OutputIntent = OutputIntent,
@@ -588,6 +598,8 @@ public sealed class FrameParams
     {
         Require3(TBase, nameof(TBase));
         Require3(DMaxPerChannel, nameof(DMaxPerChannel));
+        Require3(RgbAlignShift, nameof(RgbAlignShift));
+        Require3(RgbAlignGain, nameof(RgbAlignGain));
         Require3(DMinPerChannel, nameof(DMinPerChannel));
         Require3(ChromaChannelScale, nameof(ChromaChannelScale));
 

@@ -10,6 +10,21 @@ namespace OpenRevelare.Tests;
 /// </summary>
 public sealed class WaveformDataTests
 {
+    [Theory]
+    [InlineData(0, "1023")]
+    [InlineData(1, "895")]
+    [InlineData(2, "767")]
+    [InlineData(3, "639")]
+    [InlineData(4, "512")]
+    [InlineData(5, "384")]
+    [InlineData(6, "256")]
+    [InlineData(7, "128")]
+    [InlineData(8, "0")]
+    public void Ten_bit_scope_scale_covers_the_full_code_range(int tick, string expected)
+    {
+        Assert.Equal(expected, ScopeScale.Label(ScopeScaleMode.TenBit, tick, divisions: 8));
+    }
+
     private static float[] Fill(int w, int h, Func<int, int, (float R, float G, float B)> f)
     {
         var data = new float[w * h * 3];
@@ -38,6 +53,7 @@ public sealed class WaveformDataTests
 
         int level = Busiest(d.G, column: 10, d.Levels);
         Assert.Equal(d.Levels / 2, level);
+        Assert.Equal(level, Busiest(d.Y, column: 10, d.Levels));
         // Everything in that column landed there: 64 px over 64 columns is one source column of 32.
         Assert.Equal(32f, d.G[10 * d.Levels + level]);
     }
@@ -64,6 +80,16 @@ public sealed class WaveformDataTests
 
         Assert.True(Busiest(d.R, 8, d.Levels) > Busiest(d.G, 8, d.Levels));
         Assert.True(Busiest(d.G, 8, d.Levels) > Busiest(d.B, 8, d.Levels));
+    }
+
+    [Fact]
+    public void Computes_rec709_luma_for_yrgb_parade()
+    {
+        WaveformData d = WaveformData.FromBuffer(
+            Fill(32, 8, (_, _) => (1f, 0f, 0f)), 32, 8);
+
+        int y = Busiest(d.Y, 4, d.Levels);
+        Assert.InRange(y, (int)(0.20f * d.Levels), (int)(0.22f * d.Levels));
     }
 
     [Theory]

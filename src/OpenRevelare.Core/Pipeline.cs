@@ -283,6 +283,7 @@ public static class Pipeline
             {
                 Stage2.ApplyManagedAfterTargetEncoding(pixels.Data, cal, target.Space);
             }
+
         }
 
         return DescribeRenderedPixels(pixels, cal, ColorPipelineVersion.ManagedV2);
@@ -424,6 +425,11 @@ public static class Pipeline
         if (trackFill && (sprocketMask != null || cal.Rotation != 0.0))
             fill = MapFillThroughGeometry(sprocketMask, src.Width, src.Height, cal);
 
+        // Manual channel alignment belongs to the Cineon signal, after the physical endpoints
+        // have established Dmin/Dmax and before any display rendering or output-space matrix.
+        // The helper round-trips Stage 1's linear carrier through Cineon so every existing output
+        // path consumes the same adjusted signal. DMinPerChannel itself is never changed.
+        RgbChannelAlignment.ApplyToLinearPositive(result.Data, cal);
 
         // ── Output intent gate ────────────────────────────────────────────────
         if (cal.OutputIntent == OutputIntent.None)
@@ -436,6 +442,22 @@ public static class Pipeline
         //    The result is display-encoded in cal.ResolvedOutputSpace — which is what both
         //    the preview and the exported file use, so the two agree by construction.
         Stage2.ApplyChain(result.Data, cal, cal.ResolvedOutputSpace, encodeExit: true);
+        return result;
+    }
+
+    /// <summary>
+    /// Render the signal used by waveform/parade calibration: Stage 1 with geometry and manual
+    /// channel alignment, encoded as Cineon, before print LUT, display rendering and Stage 2.
+    /// The returned values are normalised 10-bit code values (code / 1023).
+    /// </summary>
+    public static ImageBuffer RenderCineonScope(WorkingFrame source, FrameParams cal)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(cal);
+        FrameParams scope = cal.Clone();
+        scope.OutputIntent = OutputIntent.None;
+        ImageBuffer result = ProcessFrame(source.Pixels, scope);
+        LogEncoding.ToCineon(result.Data);
         return result;
     }
 

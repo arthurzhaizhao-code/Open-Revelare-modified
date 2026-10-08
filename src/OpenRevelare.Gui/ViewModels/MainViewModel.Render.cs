@@ -138,6 +138,10 @@ public partial class MainViewModel
                 parameters,
                 _colorPipelineVersion,
                 ColorManagement);
+            _cineonWaveform = ShowsWaveformData
+                ? WaveformData.FromBuffer(Pipeline.RenderCineonScope(
+                    _previewWorking.WithPixels(_dragSmall), parameters))
+                : null;
             long tRender = trace?.ElapsedMilliseconds ?? 0;
             ImageBuffer outImg = rendered.Pixels;
             PresentationScene scene = ConvertPreviewScene(rendered);
@@ -146,7 +150,7 @@ public partial class MainViewModel
             long tFallback = trace?.ElapsedMilliseconds ?? 0;
             // Histograms stay live: at a quarter of the pixels the pass is noise next to the
             // render, and a histogram that freezes mid-drag is exactly when it is being read.
-            HistogramData histogram = ShowWaveform && Histogram is { } cachedHistogram
+            HistogramData histogram = ShowsScopeData && Histogram is { } cachedHistogram
                 ? cachedHistogram
                 : HistogramData.FromFrame(rendered, parameters.ResolvedOutputTarget.HighlightHeadroom);
             ClippingMasks? masks = ShowClipping ? DetectClipping(outImg) : null;
@@ -184,8 +188,10 @@ public partial class MainViewModel
 
         bool wantThumbnail = frame is not null && !RollAnalysisPending;
 
+        bool wantCineonWaveform = ShowsWaveformData;
         (Bitmap bmp, HistogramData hist, Bitmap? thumb, WriteableBitmap? clip,
-         PresentationScene scene, PresentationScene? clipScene, RenderedFrame rendered) = await Task.Run(() =>
+         PresentationScene scene, PresentationScene? clipScene, RenderedFrame rendered,
+         WaveformData? cineonWaveform) = await Task.Run(() =>
         {
             Bitmap? bitmap = null;
             Bitmap? thumbnail = null;
@@ -194,6 +200,10 @@ public partial class MainViewModel
             {
                 ct.ThrowIfCancellationRequested();
                 RenderedFrame rendered = Pipeline.Render(source, p, pipelineVersion, ColorManagement);
+                ct.ThrowIfCancellationRequested();
+                WaveformData? cineonWaveform = wantCineonWaveform
+                    ? WaveformData.FromBuffer(Pipeline.RenderCineonScope(source, p))
+                    : null;
                 ct.ThrowIfCancellationRequested();
                 ImageBuffer outImg = rendered.Pixels;
                 PresentationScene scene = ConvertPreviewScene(rendered);
@@ -235,7 +245,7 @@ public partial class MainViewModel
                 }
                 bitmap = BuildFallbackBitmap(rendered, scene);
                 return (bitmap, h, thumbnail, clipping,
-                        scene, clipScene, rendered);
+                        scene, clipScene, rendered, cineonWaveform);
             }
             catch
             {
@@ -249,6 +259,7 @@ public partial class MainViewModel
         if (ct.IsCancellationRequested) { bmp.Dispose(); thumb?.Dispose(); clip?.Dispose(); return; }
         void Apply()
         {
+            _cineonWaveform = cineonWaveform;
             PublishCompletePreview(
                 rendered,
                 scene,
