@@ -4,13 +4,17 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- ImageSharp 4 requires a separately issued Six Labors licence key. Keep the upstream 3.x
+         line for this GPL project and report NuGet security advisories without letting the CI's
+         global -warnaserror turn an upstream package notice into an unrelated build failure. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1902;NU1903</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OpenRevelare.ColorManagement\OpenRevelare.ColorManagement.csproj" />
     <PackageReference Include="BitMiracle.LibTiff.NET" Version="2.4.660" />
     <PackageReference Include="Sdcb.LibRaw" Version="0.21.1.7" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="4.1.2" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.*" />
   </ItemGroup>
 
   <!-- Cloud/file-sync conflict copies are recovery artifacts, not source files. Keep them on

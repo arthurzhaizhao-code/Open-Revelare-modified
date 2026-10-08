@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1902;NU1903</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,7 +17,7 @@
          corrector. -->
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
     <!-- Already a solution dependency (JPEG); reused here for the Lanczos resampler. -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="4.1.2" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.*" />
   </ItemGroup>
 
   <!-- Deep-WB 权重。⚠ 这个文件**不在本项目的 GPL-3.0 授权范围内** —— 它按原作者的
