@@ -20,7 +20,10 @@ A single frame preserves the GUI's mode/edge/tail fallback order; multiple frame
 use the detailed roll estimator. Highlights preserve the detailed detector and
 AutoWbHighFromRoll fallback. Outputs are absolute density endpoints, NOT Nami
 slider values or display RGB. No old state is changed: apply a candidate only
-after the entire call succeeds. Cancellation is cooperative between estimators,
+after the entire call succeeds. One explicit host-boundary difference: the legacy
+fallback may return density-ceiling values for an opaque frame. The new entry
+point rejects fallback candidates with a clamped channel or mean density at the
+existing real-density ceiling; the shared estimator itself remains unchanged. Cancellation is cooperative between estimators,
 not during their unchanged loops. Results and buffers are not immutable; hosts
 must own/synchronize them and not mutate inputs during a call.
 

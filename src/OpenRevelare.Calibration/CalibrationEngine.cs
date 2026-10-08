@@ -96,6 +96,11 @@ public static class CalibrationEngine
             masks, tbase, boardThreshold, images);
         if (span.Any(v => !double.IsFinite(v) || v <= 0))
             throw new InvalidOperationException("No usable highlight span; retain previous calibration.");
+        // The legacy fallback can return its numerical ceiling for a fully opaque frame.
+        // Reject that candidate at the host boundary, without changing the shared estimator.
+        if (highlight is null && (span.Any(v => v >= DensityMath.DensityCeiling)
+            || span.Average() >= DensityMath.RealDensityCeiling))
+            throw new InvalidOperationException("Fallback found opaque/clamped data, not a usable highlight.");
         var dmax = span.Select((v, c) => v + dmin[c]).ToArray();
         cancellationToken.ThrowIfCancellationRequested();
         return new(dmin, dmax, evidence, baseDiagnostics, highlight,
