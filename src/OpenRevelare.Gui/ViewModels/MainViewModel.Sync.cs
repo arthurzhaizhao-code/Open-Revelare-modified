@@ -180,6 +180,8 @@ public partial class MainViewModel
                 d.TBase = (double[])s.TBase.Clone();
                 d.DMinPerChannel = (double[])s.DMinPerChannel.Clone();
                 d.DMaxPerChannel = (double[])s.DMaxPerChannel.Clone();
+                d.RgbAlignShift = (double[])s.RgbAlignShift.Clone();
+                d.RgbAlignGain = (double[])s.RgbAlignGain.Clone();
             }
             if (Sync.CalChroma) { d.ChromaChannelScale = (double[])s.ChromaChannelScale.Clone(); }
             if (Sync.CalLens) { d.DistortionK1 = s.DistortionK1; d.VignetteAmount = s.VignetteAmount; d.VignetteFalloff = s.VignetteFalloff; d.LccFlatField = s.LccFlatField; }

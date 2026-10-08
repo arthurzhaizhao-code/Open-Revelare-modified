@@ -408,6 +408,26 @@
                                     <TextBlock Text="{i18n:T '对比'}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </ToggleButton>
+                            <Button Classes="icon" Click="OnRotateCcwClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '逆时针 90°'}">
+                                <ctl:Icon Data="{StaticResource IcoRotateCcw}" />
+                            </Button>
+                            <Button Classes="icon" Click="OnRotateCwClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '顺时针 90°'}">
+                                <ctl:Icon Data="{StaticResource IcoRotateCw}" />
+                            </Button>
+                            <Button Classes="icon" Click="OnFlipHClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '水平翻转'}">
+                                <ctl:Icon Data="{StaticResource IcoFlipH}" />
+                            </Button>
+                            <Button Classes="icon" Click="OnFlipVClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '竖直翻转'}">
+                                <ctl:Icon Data="{StaticResource IcoFlipV}" />
+                            </Button>
+                            <Button Classes="icon" Click="OnCropClick" IsEnabled="{Binding HasImage}"
+                                    ToolTip.Tip="{i18n:T '裁切（拖框）'}">
+                                <ctl:Icon Data="{StaticResource IcoCrop}" />
+                            </Button>
                         </StackPanel>
 
                         <!-- Outside the native-preview airspace: legacy projects retain their
@@ -1082,32 +1102,31 @@
                                     </StackPanel>
                                 </Expander>
 
-                                <!-- NamiColor-style manual channel alignment, expressed through the
-                                     same canonical endpoint affine that the renderer already uses.
-                                     These are deliberately not a second correction stage: Offset edits
-                                     D_min and Gain/Span edits D_max, so the image is corrected once. -->
-                                <Expander Header="{i18n:T 'RGB 三通道对齐（密度域）'}" IsExpanded="True" Tag="3"
+                                <!-- Independent final-output alignment. It runs after colour
+                                     matrices and luma operations, so changing R cannot move G/B. -->
+                                <Expander Header="{i18n:T 'RGB 三通道独立对齐'}" IsExpanded="True" Tag="3"
                                           IsVisible="{Binding IsColourRoll}"
-                                          ToolTip.Tip="{i18n:T '配合 YRGB 分量图手工对齐。先用暗部 Offset 对齐黑位，再用亮部 Gain / Span 对齐高光；直接写入上面的 D_min / D_max，不会叠加第二次校正。'}">
+                                          ToolTip.Tip="{i18n:T '配合 YRGB 分量图手工对齐。这里改变最终输出 RGB，每次只影响被调的一个通道；不会改写自动 D_min / D_max。'}">
                                     <StackPanel Spacing="4">
                                         <TextBlock Classes="groupHint" TextWrapping="Wrap"
-                                                   Text="{i18n:T '查看 YRGB 分量图：先调暗部 Offset，使中性黑位的 R/G/B 高度一致；再调亮部 Gain / Span，使中性高光一致。G 可作为参考。数值是绝对光学密度。'}" />
-                                        <Expander Header="{i18n:T '暗部 Offset / Shift'}" Theme="{StaticResource SubExpander}" IsExpanded="True"
-                                                  ToolTip.Tip="{i18n:T '改变各通道 D_min，即密度域仿射的偏移端。主要控制阴影和片基端的色偏。'}">
+                                                   Text="{i18n:T '打开 YRGB 分量图并放大，以 G 为参考。Shift 按 10-bit 码值移动，Gain 是独立通道倍率；调整 R 时 G/B 应保持原位。自动标定仍由上面的 D_min / D_max 负责。'}" />
+                                        <Expander Header="{i18n:T '独立 Shift（10-bit 码值）'}" Theme="{StaticResource SubExpander}" IsExpanded="True"
+                                                  ToolTip.Tip="{i18n:T '只移动对应通道的最终输出电平；其它两个通道不参与计算。'}">
                                             <StackPanel Spacing="1">
-                                                <ctl:SliderRow Label="R" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinR}" TrackBrush="{DynamicResource TrackRBrush}" />
-                                                <ctl:SliderRow Label="G" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinG}" TrackBrush="{DynamicResource TrackGBrush}" />
-                                                <ctl:SliderRow Label="B" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinB}" TrackBrush="{DynamicResource TrackBBrush}" />
+                                                <ctl:SliderRow Label="R" Minimum="-1023" Maximum="1023" Decimals="0" Increment="1" DefaultValue="0" Value="{Binding RgbAlignShiftR}" TrackBrush="{DynamicResource TrackRBrush}" Bipolar="True" />
+                                                <ctl:SliderRow Label="G" Minimum="-1023" Maximum="1023" Decimals="0" Increment="1" DefaultValue="0" Value="{Binding RgbAlignShiftG}" TrackBrush="{DynamicResource TrackGBrush}" Bipolar="True" />
+                                                <ctl:SliderRow Label="B" Minimum="-1023" Maximum="1023" Decimals="0" Increment="1" DefaultValue="0" Value="{Binding RgbAlignShiftB}" TrackBrush="{DynamicResource TrackBBrush}" Bipolar="True" />
                                             </StackPanel>
                                         </Expander>
-                                        <Expander Header="{i18n:T '亮部 Gain / Span'}" Theme="{StaticResource SubExpander}" IsExpanded="True"
-                                                  ToolTip.Tip="{i18n:T '改变各通道 D_max 与 D_min 的跨度，即密度域仿射的增益端。主要控制高光色偏与通道反差。'}">
+                                        <Expander Header="{i18n:T '独立 Gain'}" Theme="{StaticResource SubExpander}" IsExpanded="True"
+                                                  ToolTip.Tip="{i18n:T '只缩放对应通道的最终输出电平；其它两个通道不参与计算。'}">
                                             <StackPanel Spacing="1">
-                                                <ctl:SliderRow Label="R" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxR}" TrackBrush="{DynamicResource TrackRBrush}" />
-                                                <ctl:SliderRow Label="G" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxG}" TrackBrush="{DynamicResource TrackGBrush}" />
-                                                <ctl:SliderRow Label="B" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxB}" TrackBrush="{DynamicResource TrackBBrush}" />
+                                                <ctl:SliderRow Label="R" Minimum="0.5" Maximum="1.5" Decimals="3" Increment="0.001" DefaultValue="1" Value="{Binding RgbAlignGainR}" TrackBrush="{DynamicResource TrackRBrush}" />
+                                                <ctl:SliderRow Label="G" Minimum="0.5" Maximum="1.5" Decimals="3" Increment="0.001" DefaultValue="1" Value="{Binding RgbAlignGainG}" TrackBrush="{DynamicResource TrackGBrush}" />
+                                                <ctl:SliderRow Label="B" Minimum="0.5" Maximum="1.5" Decimals="3" Increment="0.001" DefaultValue="1" Value="{Binding RgbAlignGainB}" TrackBrush="{DynamicResource TrackBBrush}" />
                                             </StackPanel>
                                         </Expander>
+                                        <Button Content="{i18n:T '重置独立对齐'}" Click="OnResetRgbAlignmentClick" />
                                     </StackPanel>
                                 </Expander>
 

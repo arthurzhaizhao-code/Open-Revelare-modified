@@ -363,6 +363,8 @@ public static class Project
             // ── 反相的六个自由度，就这两行 ──────────────────────────────────────
             ["d_min_per_channel"] = Arr(p.DMinPerChannel),
             ["d_max_per_channel"] = Arr(p.DMaxPerChannel),
+            ["rgb_align_shift"] = Arr(p.RgbAlignShift),
+            ["rgb_align_gain"] = Arr(p.RgbAlignGain),
             // ── 以下为兼容键，全部写成中性值 ────────────────────────────────────
             // 旧版本（及 Python 读端）仍会解析它们。写中性值而非真实值，是因为那些版本会把
             // 它们叠加到端点之上——写非中性就等于让旧版把同一个校正应用两遍。
@@ -446,6 +448,8 @@ public static class Project
             // 两端，按文件写入时的 schema 迁移——见 MigrateHighlightEndpoint / MigrateShadowEndpoint。
             DMaxPerChannel = MigrateHighlightEndpoint(d),
             DMinPerChannel = MigrateShadowEndpoint(d),
+            RgbAlignShift = Vec3(d, "rgb_align_shift", 0, 0, 0),
+            RgbAlignGain = Vec3(d, "rgb_align_gain", 1, 1, 1),
             ChromaChannelScale = Vec3(d, "chroma_channel_scale", 1, 1, 1),
             // Deliberately not read back. A stored 3.05 described a chroma boost compensating for
             // a colour-space conversion the pipeline was missing; that conversion now exists

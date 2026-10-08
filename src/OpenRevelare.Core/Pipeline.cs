@@ -283,6 +283,10 @@ public static class Pipeline
             {
                 Stage2.ApplyManagedAfterTargetEncoding(pixels.Data, cal, target.Space);
             }
+
+            // Last colour operation: one slider must move one RGB component on the parade.
+            // Nothing that follows may contain a colour matrix or a luma-driven adjustment.
+            RgbChannelAlignment.Apply(pixels.Data, cal, clampToUnit: !target.IsExtended);
         }
 
         return DescribeRenderedPixels(pixels, cal, ColorPipelineVersion.ManagedV2);
@@ -436,6 +440,7 @@ public static class Pipeline
         //    The result is display-encoded in cal.ResolvedOutputSpace — which is what both
         //    the preview and the exported file use, so the two agree by construction.
         Stage2.ApplyChain(result.Data, cal, cal.ResolvedOutputSpace, encodeExit: true);
+        RgbChannelAlignment.Apply(result.Data, cal, clampToUnit: true);
         return result;
     }
 

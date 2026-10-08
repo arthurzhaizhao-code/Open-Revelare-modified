@@ -154,6 +154,15 @@ public sealed class FrameParams
     public double[] DMinPerChannel { get; set; } = { 0.0, 0.0, 0.0 };
 
     /// <summary>
+    /// Final-output RGB alignment, after every colour-space matrix and creative adjustment.
+    /// Shift is expressed in normalised 10-bit code units (one unit = 1/1023), and gain is a
+    /// direct multiplier. Keeping this at the end of the render is intentional: changing one
+    /// component must not move either of the other two components on the RGB parade.
+    /// </summary>
+    public double[] RgbAlignShift { get; set; } = { 0.0, 0.0, 0.0 };
+    public double[] RgbAlignGain { get; set; } = { 1.0, 1.0, 1.0 };
+
+    /// <summary>
     /// 这卷是黑白负片：三个通道承载的是同一张银影，不是三层染料。
     ///
     /// 打开后，线性域校正做完、进密度域之前把三通道折成一路亮度信号，反相只用一对端点
@@ -538,6 +547,8 @@ public sealed class FrameParams
         TBase = (double[])TBase.Clone(),
         DMaxPerChannel = (double[])DMaxPerChannel.Clone(),
         DMinPerChannel = (double[])DMinPerChannel.Clone(),
+        RgbAlignShift = (double[])RgbAlignShift.Clone(),
+        RgbAlignGain = (double[])RgbAlignGain.Clone(),
         ChromaChannelScale = (double[])ChromaChannelScale.Clone(),
         Monochrome = Monochrome,
         OutputIntent = OutputIntent,
@@ -588,6 +599,8 @@ public sealed class FrameParams
     {
         Require3(TBase, nameof(TBase));
         Require3(DMaxPerChannel, nameof(DMaxPerChannel));
+        Require3(RgbAlignShift, nameof(RgbAlignShift));
+        Require3(RgbAlignGain, nameof(RgbAlignGain));
         Require3(DMinPerChannel, nameof(DMinPerChannel));
         Require3(ChromaChannelScale, nameof(ChromaChannelScale));
 

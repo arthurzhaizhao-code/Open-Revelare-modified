@@ -1240,6 +1240,29 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     partial void OnDMaxGChanged(double value) { InvalidateHighlightEndpointDiagnostics(); SyncScalarsFromEndpoints(); ScheduleRender(); }
     partial void OnDMaxBChanged(double value) { InvalidateHighlightEndpointDiagnostics(); SyncScalarsFromEndpoints(); ScheduleRender(); }
 
+    // Final-output RGB alignment. These are intentionally independent of D_min/D_max: automatic
+    // calibration remains an inspectable starting point, while the manual trim is applied only
+    // after all matrices so one slider cannot move another parade channel.
+    [ObservableProperty] private double _rgbAlignShiftR;
+    [ObservableProperty] private double _rgbAlignShiftG;
+    [ObservableProperty] private double _rgbAlignShiftB;
+    [ObservableProperty] private double _rgbAlignGainR = 1.0;
+    [ObservableProperty] private double _rgbAlignGainG = 1.0;
+    [ObservableProperty] private double _rgbAlignGainB = 1.0;
+    partial void OnRgbAlignShiftRChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignShiftGChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignShiftBChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignGainRChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignGainGChanged(double value) => ScheduleRender();
+    partial void OnRgbAlignGainBChanged(double value) => ScheduleRender();
+
+    /// <summary>Reset only the manual final-output trim; the measured D_min/D_max stay untouched.</summary>
+    public void ResetRgbAlignment()
+    {
+        RgbAlignShiftR = RgbAlignShiftG = RgbAlignShiftB = 0.0;
+        RgbAlignGainR = RgbAlignGainG = RgbAlignGainB = 1.0;
+    }
+
     /// <summary>暗端三个分量的数组视图。同一份数据，不是第二个字段。</summary>
     public double[] DMinPerChannel
     {
@@ -2066,6 +2089,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         TBase = TBaseArr(),
         DMinPerChannel = DMinPerChannel,
         DMaxPerChannel = DMaxPerChannel,
+        RgbAlignShift = new[] { RgbAlignShiftR, RgbAlignShiftG, RgbAlignShiftB },
+        RgbAlignGain = new[] { RgbAlignGainR, RgbAlignGainG, RgbAlignGainB },
         // Stage 2 — 色温/色调 → geomean-1 gains; 黑/白场 → levels
         WbGains = WbMath.TempTintToGains(Temp, Tint),
         ExposureEv = ExposureEv,

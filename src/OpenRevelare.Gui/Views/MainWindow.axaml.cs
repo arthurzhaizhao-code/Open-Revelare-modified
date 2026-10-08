@@ -179,6 +179,9 @@ public partial class MainWindow : Window
         window.Show(this);
     }
 
+    private void OnResetRgbAlignmentClick(object? sender, RoutedEventArgs e)
+        => Vm?.ResetRgbAlignment();
+
     /// <summary>
     /// First-ever launch: show the onboarding once (persisted by a marker file).
     ///
