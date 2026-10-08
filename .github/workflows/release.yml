@@ -1,11 +1,7 @@
 name: release
 
-# 打 tag 就出三个平台四个包（mac 分 arm64 / Intel），收进一个 draft release 里等人工写说明后再发布。
-#   git tag v1.0.0 && git push origin v1.0.0
-# 也可以在 Actions 页面手动跑（workflow_dispatch），那种情况下只上传构建产物、不建 release。
-#
-# 公开仓库的 Actions 分钟数不计费，但 macOS runner 一次要跑约 9 分钟（编 LibRaw 占大头），
-# 所以仍然只挂在 tag 上，别挂 push —— 每次推代码都编三个平台没有意义。
+# Build Apple Silicon and Intel macOS packages.
+# Tags create a draft release; manual runs upload DMG artifacts only.
 
 on:
   push:
@@ -21,15 +17,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
 
 jobs:
-  # 发版前的两道闸：版本号对不对，回归测试过不过。
-  #
-  # tag 与 csproj 的 <Version> 必须一致 —— 这两处对不上，发出去的包就会带错版本号，
-  # 而更新检测是按版本号比较的。先失败在这里，比失败在用户机器上便宜得多。
-  #
-  # 回归测试同理，而且更要紧：三个平台的打包 job 都 needs: guard，所以测试一红，
-  # 三个包一个都不会打出来。一次发版把回归 bug 带给全部用户的代价，远高于这十秒。
   guard:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
@@ -55,129 +44,6 @@ jobs:
               echo "::error::tag ($tag) 与 csproj 的 <Version> ($version) 不一致"; exit 1; }
           fi
 
-  windows:
-    needs: guard
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-      - name: 构建固定 Little CMS 2.19.1
-        shell: pwsh
-        run: ./packaging/lcms/build-windows.ps1
-      - name: 构建可重复 Win32 presenter
-        shell: pwsh
-        run: ./packaging/windows/build-win32-presenter.ps1
-      - name: Windows presenter contract tests
-        shell: pwsh
-        run: dotnet test src/OpenRevelare.Presentation.Win32.Tests -c Release --nologo
-      - name: publish
-        shell: pwsh
-        run: |
-          dotnet publish src/OpenRevelare.Gui -c Release -r win-x64 --self-contained true -o publish/win-x64
-          if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败（$LASTEXITCODE）" }
-          Copy-Item -LiteralPath native/win-x64/lcms2.dll -Destination publish/win-x64/lcms2.dll -Force
-          Copy-Item -LiteralPath native/win-x64/lcms2.manifest.json -Destination publish/win-x64/lcms2.manifest.json -Force
-          $presenterDll = "OpenRevelare.Presentation.Win32.Native.dll"
-          $presenterManifest = "OpenRevelare.Presentation.Win32.Native.manifest.json"
-          Copy-Item -LiteralPath (Join-Path native/win-x64 $presenterDll) -Destination (Join-Path publish/win-x64 $presenterDll) -Force
-          Copy-Item -LiteralPath (Join-Path native/win-x64 $presenterManifest) -Destination (Join-Path publish/win-x64 $presenterManifest) -Force
-          ./packaging/windows/verify-win32-presenter.ps1 -Directory publish/win-x64 -RepositoryRoot $PWD
-          ./packaging/windows/smoke-win32-presenter.ps1 -Directory publish/win-x64
-          $sourceHash = (Get-FileHash -LiteralPath native/win-x64/lcms2.dll -Algorithm SHA256).Hash
-          $publishHash = (Get-FileHash -LiteralPath publish/win-x64/lcms2.dll -Algorithm SHA256).Hash
-          if ($sourceHash -ne $publishHash) { throw "publish 中的 lcms2.dll 与 app-owned 构建不一致" }
-          if (-not (Test-Path -LiteralPath publish/win-x64/lcms2.manifest.json)) { throw "缺 Little CMS manifest" }
-          if (-not (Test-Path -LiteralPath (Join-Path publish/win-x64 $presenterDll))) { throw "缺 Win32 presenter" }
-          if (-not (Test-Path -LiteralPath (Join-Path publish/win-x64 $presenterManifest))) { throw "缺 Win32 presenter manifest" }
-      - name: Inno Setup
-        shell: pwsh
-        run: |
-          choco install innosetup -y --no-progress
-          # 固定路径优先；choco 也会往 PATH 放一个 ISCC shim，留作后备，
-          # 免得哪天 Inno 7 换了目录名就整条发版链断掉。
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { $iscc = (Get-Command ISCC).Source }
-          & $iscc open-revelare.iss
-          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
-      - name: Windows installer contents check
-        shell: pwsh
-        run: |
-          $setups = @(Get-ChildItem -LiteralPath installer -Filter "OpenRevelare-*-setup.exe" -File)
-          if ($setups.Count -ne 1) { throw "Expected exactly one Windows setup, got $($setups.Count)" }
-          $installed = Join-Path $env:RUNNER_TEMP "openrevelare-installed"
-          $arguments = @(
-            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/CURRENTUSER",
-            "/DIR=`"$installed`"")
-          # setup.exe / unins000.exe 是 GUI 子系统程序：`&` 调用不等它结束，$LASTEXITCODE
-          # 也不会被设置（为 $null，于是 -ne 0 恒真）。必须 Start-Process -Wait 拿 ExitCode。
-          $setup = Start-Process -FilePath $setups[0].FullName -ArgumentList $arguments -Wait -PassThru
-          if ($setup.ExitCode -ne 0) { throw "Silent setup failed ($($setup.ExitCode))" }
-          ./packaging/windows/verify-win32-presenter.ps1 -Directory $installed -RepositoryRoot $PWD
-          ./packaging/windows/smoke-win32-presenter.ps1 -Directory $installed
-          if (-not (Test-Path -LiteralPath (Join-Path $installed "OpenRevelare.exe"))) { throw "Installed app executable is missing" }
-          if (-not (Test-Path -LiteralPath (Join-Path $installed "lcms2.dll"))) { throw "Installed Little CMS is missing" }
-          if (-not (Test-Path -LiteralPath (Join-Path $installed "lcms2.manifest.json"))) { throw "Installed Little CMS manifest is missing" }
-          $uninstaller = Join-Path $installed "unins000.exe"
-          if (-not (Test-Path -LiteralPath $uninstaller)) { throw "Installed uninstaller is missing" }
-          $unins = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
-          if ($unins.ExitCode -ne 0) { throw "Installer-check uninstall failed ($($unins.ExitCode))" }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows
-          path: installer/*.exe
-          if-no-files-found: error
-
-  linux:
-    needs: guard
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-      - name: 构建固定 Little CMS 2.19.1
-        run: bash packaging/lcms/build-unix.sh
-      - name: 取 appimagetool 与静态 runtime
-        run: |
-          mkdir -p tools
-          curl -fL --retry 3 -o tools/appimagetool-x86_64.AppImage \
-            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x tools/appimagetool-x86_64.AppImage
-          curl -fL --retry 3 -o tools/runtime-x86_64 \
-            https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
-      - name: publish + 装配 app-owned Little CMS
-        run: |
-          dotnet publish src/OpenRevelare.Gui -c Release -r linux-x64 --self-contained true -o publish/linux-x64
-          install -m 0755 native/linux-x64/liblcms2.so.2 publish/linux-x64/liblcms2.so.2
-          install -m 0755 native/linux-x64/liblcms2.so publish/linux-x64/liblcms2.so
-          install -m 0644 native/linux-x64/lcms2.manifest.json publish/linux-x64/lcms2.manifest.json
-          cmp -s native/linux-x64/liblcms2.so.2 publish/linux-x64/liblcms2.so.2
-      - name: 打 AppImage
-        run: ./packaging/linux/build-appimage.sh --no-publish
-      - name: AppImage 装配自检
-        run: |
-          test -f publish/OpenRevelare.AppDir/usr/bin/liblcms2.so.2 || { echo "AppImage 缺 app-owned Little CMS"; exit 1; }
-          test -f publish/OpenRevelare.AppDir/usr/bin/liblcms2.so || { echo "AppImage 缺 Little CMS loader alias"; exit 1; }
-          test -f publish/OpenRevelare.AppDir/usr/bin/lcms2.manifest.json || { echo "AppImage 缺 Little CMS manifest"; exit 1; }
-          cmp -s native/linux-x64/liblcms2.so.2 publish/OpenRevelare.AppDir/usr/bin/liblcms2.so.2
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux
-          path: installer/*.AppImage
-          if-no-files-found: error
-
-  # **Apple Silicon 与 Intel 各出一个包**（用户 2026-09-13 决定，推翻 2026-08-04 的
-  # "只出 arm64"）。Intel 用户拿 arm64 包走不了 Rosetta（Rosetta 只能反过来：x64 包在
-  # arm64 上跑），所以 Intel 包不能省。代价：Intel runner 是 macOS ×10 倍率里最贵的一格
-  # （约 80 计费分钟/次），公开仓库不计费，但仍只挂在 tag 上，别挂 push。
-  #
-  # 两格共用同一套步骤：三个 packaging 脚本都按 uname 自己认架构、写进 native/osx-<arch>/，
-  # 只有 dotnet publish 的 -r 与产物名要带 RID / 架构，从 matrix 取。
-  #
-  # `macos-15-intel` 是 GitHub 最后一代 x86_64 镜像，**2027-08 下线**，之后 Actions 不再
-  # 提供 Intel runner —— 到时候 Intel 包要么停出、要么自架 runner，这是个已知的截止日。
   macos:
     needs: guard
     strategy:
@@ -249,9 +115,9 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [guard, windows, linux, macos]
+    needs: [guard, macos]
     if: github.ref_type == 'tag'
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -265,7 +131,7 @@ jobs:
           # 正文用 --notes-file 而不是 --notes：内容里有反引号、引号和换行，
           # 塞进命令行迟早被 shell 或 YAML 咬一口（已经咬过一次）。
           cat > notes.md <<'MD'
-          见 `CHANGELOG.md`。macOS / Linux 为 **Beta**，欢迎回报问题。
+          见 `CHANGELOG.md`。macOS 为 **Beta**，欢迎回报问题。
 
           ### macOS 首次打开
 
