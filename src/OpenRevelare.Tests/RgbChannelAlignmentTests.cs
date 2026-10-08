@@ -1,4 +1,5 @@
 using OpenRevelare.Core;
+using Xunit;
 
 namespace OpenRevelare.Tests;
 
