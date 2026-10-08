@@ -36,6 +36,7 @@ public static class CalibrationEngine
         }
         cancellationToken.ThrowIfCancellationRequested();
         double[] dmin;
+        double[]? measuredRollBase = null;
         FilmBaseEvidence? evidence = null;
         FilmBaseEstimate? baseDiagnostics = null;
         if (lockedDMin is not null)
@@ -75,11 +76,14 @@ public static class CalibrationEngine
                     frames.Select(f => f.BaseMask ?? f.Base).ToArray(), boardThreshold,
                     frames.Select(f => f.Base).ToArray(), allowNeutralCarrier);
                 tb = baseDiagnostics.TBase;
+                measuredRollBase = tb;
                 evidence = baseDiagnostics.Evidence;
             }
             dmin = tb.Select(v => -Math.Log10(Math.Max(v, 1e-10))).ToArray();
         }
-        var tbase = dmin.Select(v => Math.Pow(10.0, -v)).ToArray();
+        // Original roll path uses the measured transmission directly; avoid a log/pow
+        // round trip there. Single-frame and locked-base paths reconstruct from Dmin.
+        var tbase = measuredRollBase ?? dmin.Select(v => Math.Pow(10.0, -v)).ToArray();
         if (tbase.Any(v => !double.IsFinite(v) || v <= 0))
             throw new ArgumentException("Dmin cannot be represented as positive transmittance.");
         cancellationToken.ThrowIfCancellationRequested();

@@ -63,7 +63,7 @@ public class CalibrationEngineTests
         else
             tb = FilmBase.EstimateTBaseFromRollDetailed(images, valueImages: images).TBase;
         var dmin = tb.Select(v => -Math.Log10(Math.Max(v, 1e-10))).ToArray();
-        var normalizedBase = dmin.Select(v => Math.Pow(10, -v)).ToArray();
+        var normalizedBase = count > 1 ? tb : dmin.Select(v => Math.Pow(10, -v)).ToArray();
         var h = FilmBase.DetectDMaxPerChannelFromRollDetailed(images, normalizedBase, 90, images);
         var span = h?.Density ?? FilmBase.AutoWbHighFromRoll(images, normalizedBase, null, images);
         var buffers = images.Select(Convert).ToArray();
