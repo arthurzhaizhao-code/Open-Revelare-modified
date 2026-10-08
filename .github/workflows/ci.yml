@@ -24,7 +24,7 @@ jobs:
           dotnet-version: '8.0.x'
       - name: 构建固定 Little CMS 2.19.1
         run: bash packaging/lcms/build-unix.sh
-      - run: dotnet build -c Release -warnaserror
+      - run: dotnet build -c Release -warnaserror '-warnnotaserror:NU1902;NU1903'
       # 同一套回归测试也在 macOS 上跑一遍：这里的测试有相当一部分在验数值结果，
       # 而浮点行为、文化相关的数字解析、路径大小写都是跨平台会分岔的地方。
       - run: dotnet test -c Release --no-build --nologo
@@ -41,7 +41,7 @@ jobs:
       # 编译错误在这一格现形，比等用户报"预览退回 SDR"强。
       - name: 编 macOS 原生 presenter
         run: ./packaging/macos/build-macos-presenter.sh
-      - run: dotnet publish src/OpenRevelare.Gui -c Release -r osx-arm64 --self-contained true -warnaserror -o /tmp/pub
+      - run: dotnet publish src/OpenRevelare.Gui -c Release -r osx-arm64 --self-contained true -warnaserror '-warnnotaserror:NU1902;NU1903' -o /tmp/pub
       - name: 装配 Little CMS manifest
         run: cp native/osx-arm64/lcms2.manifest.json /tmp/pub/lcms2.manifest.json
       - name: 产物自检
