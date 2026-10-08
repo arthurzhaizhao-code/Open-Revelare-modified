@@ -191,7 +191,7 @@ public partial class MainViewModel
             PreviewImage = fallback;
             Histogram = histogram;
             // One place for every publication path, and only when it is on screen.
-            Waveform = ShowWaveform ? WaveformData.FromBuffer(rendered.Pixels) : null;
+            Waveform = ShowsWaveformData ? WaveformData.FromBuffer(rendered.Pixels) : null;
             ClippingOverlay = clippingOverlay;
             ClippingScene = clippingScene;
             if (refreshSprocketMask && ShowSprocketMask && _sprocketOverlayDirty)

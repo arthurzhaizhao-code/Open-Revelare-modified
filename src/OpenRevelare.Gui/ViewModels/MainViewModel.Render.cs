@@ -146,7 +146,7 @@ public partial class MainViewModel
             long tFallback = trace?.ElapsedMilliseconds ?? 0;
             // Histograms stay live: at a quarter of the pixels the pass is noise next to the
             // render, and a histogram that freezes mid-drag is exactly when it is being read.
-            HistogramData histogram = ShowWaveform && Histogram is { } cachedHistogram
+            HistogramData histogram = ShowsWaveformData && Histogram is { } cachedHistogram
                 ? cachedHistogram
                 : HistogramData.FromFrame(rendered, parameters.ResolvedOutputTarget.HighlightHeadroom);
             ClippingMasks? masks = ShowClipping ? DetectClipping(outImg) : null;

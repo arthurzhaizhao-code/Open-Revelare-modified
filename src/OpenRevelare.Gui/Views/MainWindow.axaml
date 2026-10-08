@@ -864,16 +864,19 @@
                 <Border Grid.Row="0" Padding="22,8,14,6" Background="{DynamicResource Panel2Brush}"
                         BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="0,0,0,1">
                     <StackPanel Spacing="4">
-                        <!-- One slot, two readings of it. They are not shown together: both answer
-                             "how is this frame exposed", and stacking them spent twice the height of
-                             the pinned block on one question. The switch sits under the plot, right
-                             where the eye already is. -->
+                        <!-- One slot, three readings of it. They are not shown together: all answer
+                             "how is this frame exposed", and stacking them would spend the pinned
+                             block's height repeatedly on one question. The switch sits under the
+                             plot, right where the eye already is. -->
                         <ctl:HistogramView Data="{Binding Histogram}" IsVisible="{Binding ShowHistogram}"
                                            DisplayHeadroom="{Binding DisplayHdrHeadroom}" ToolTip.Tip="{Binding HistogramTooltip}"
                                            Height="78" HorizontalAlignment="Stretch" />
                         <ctl:WaveformView Data="{Binding Waveform}" IsVisible="{Binding ShowWaveform}"
                                           Height="78" HorizontalAlignment="Stretch"
                                           ToolTip.Tip="{i18n:T '波形：横轴是画面的横向位置，纵轴是显示亮度，三通道叠加。中性是灰的，偏色会看到通道上下分开；整幅渐变（灯板不匀、翻拍架偏斜）在直方图上看不出来，在这里一眼可见。'}" />
+                        <ctl:RgbParadeView Data="{Binding Waveform}" IsVisible="{Binding ShowRgbParade}"
+                                           Height="78" HorizontalAlignment="Stretch"
+                                           ToolTip.Tip="{i18n:T 'RGB 分量：R、G、B 从左到右分开显示，共用同一纵轴，可直接比较三通道的电平位置。'}" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4" Margin="0,2,0,0">
                             <ToggleButton Name="HistogramBtn" Padding="6,1" Height="19" MinHeight="19"
                                           IsChecked="{Binding ShowHistogram, Mode=TwoWay}"
@@ -886,6 +889,12 @@
                                           IsEnabled="{Binding HasImage}"
                                           ToolTip.Tip="{i18n:T '波形：同样的亮度分布，但保留横向位置。判断偏色是整幅均匀还是渐变。'}">
                                 <TextBlock Text="{i18n:T '波形'}" FontSize="10" VerticalAlignment="Center" />
+                            </ToggleButton>
+                            <ToggleButton Name="RgbParadeBtn" Padding="6,1" Height="19" MinHeight="19"
+                                          IsChecked="{Binding ShowRgbParade, Mode=TwoWay}"
+                                          IsEnabled="{Binding HasImage}"
+                                          ToolTip.Tip="{i18n:T 'RGB 分量：三个通道横向分开并共享纵轴，便于手工对齐。'}">
+                                <TextBlock Text="{i18n:T 'RGB 分量'}" FontSize="10" VerticalAlignment="Center" />
                             </ToggleButton>
                         </StackPanel>
                         <!-- Lightroom's HDR Limit, where Lightroom puts it: under the histogram whose

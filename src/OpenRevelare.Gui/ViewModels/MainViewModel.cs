@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 66204)
+Total output lines: 4804
+
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime;
@@ -13,6 +16,13 @@ using OpenRevelare.Gui.Services;
 using OpenRevelare.Presentation;
 
 namespace OpenRevelare.Gui.ViewModels;
+
+public enum ScopeDisplayMode
+{
+    Histogram,
+    Waveform,
+    RgbParade,
+}
 
 /// <summary>
 /// Single-frame workflow: import a RAW/TIFF negative, calibrate the density-domain
@@ -1401,37 +1411,46 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <inheritdoc cref="ClipShadowPercent"/>
     [ObservableProperty] private double _clipHighlightPercent = Settings.Current.ClipHighlightThreshold * 100d;
 
-    /// <summary>
-    /// Whether the waveform is shown under the histogram. Off by default and computed only while
-    /// on: it is a per-pixel pass on every published preview, and most of the time the histogram
-    /// answers the question.
-    /// </summary>
-    [ObservableProperty] private bool _showWaveform;
+    /// <summary>The diagnostic occupying the single scope slot. Waveform data is computed only
+    /// for the two modes that need it; all three views inspect the final rendered positive.</summary>
+    [ObservableProperty] private ScopeDisplayMode _scopeMode;
     [ObservableProperty] private WaveformData? _waveform;
 
-    /// <summary>
-    /// The other half of the scope switch. The two share one slot in the panel — they answer the
-    /// same question from two directions and nobody reads both at once — so this is the inverse of
-    /// <see cref="ShowWaveform"/> rather than a second flag that could disagree with it.
-    /// </summary>
     public bool ShowHistogram
     {
-        get => !ShowWaveform;
-        set => ShowWaveform = !value;
+        get => ScopeMode == ScopeDisplayMode.Histogram;
+        set { if (value) ScopeMode = ScopeDisplayMode.Histogram; }
     }
 
-    partial void OnShowWaveformChanged(bool value)
+    public bool ShowWaveform
     {
-        HistogramData? histogram = !value && _previewRenderedFrame is { } rendered
+        get => ScopeMode == ScopeDisplayMode.Waveform;
+        set { if (value) ScopeMode = ScopeDisplayMode.Waveform; }
+    }
+
+    public bool ShowRgbParade
+    {
+        get => ScopeMode == ScopeDisplayMode.RgbParade;
+        set { if (value) ScopeMode = ScopeDisplayMode.RgbParade; }
+    }
+
+    private bool ShowsWaveformData => ScopeMode != ScopeDisplayMode.Histogram;
+
+    partial void OnScopeModeChanged(ScopeDisplayMode value)
+    {
+        bool showsWaveformData = value != ScopeDisplayMode.Histogram;
+        HistogramData? histogram = !showsWaveformData && _previewRenderedFrame is { } rendered
             ? HistogramData.FromFrame(rendered, CurrentTargetHeadroom)
             : Histogram;
         UpdatePresentation(() =>
         {
-            Waveform = value && _previewRenderedFrame is { } current
+            Waveform = showsWaveformData && _previewRenderedFrame is { } current
                 ? WaveformData.FromBuffer(current.Pixels)
                 : null;
             Histogram = histogram;
             OnPropertyChanged(nameof(ShowHistogram));
+            OnPropertyChanged(nameof(ShowWaveform));
+            OnPropertyChanged(nameof(ShowRgbParade));
             InvalidatePresentation();
         });
     }
@@ -2230,427 +2249,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _savedPositiveRenderedFrame is { } rendered)
         {
             // Histogram and clipping belong to the pixels being restored, never to the
-            // negative viewer that happens to be on screen at this instant.
-            saved = PreparePreview(rendered, ShowClipping, scene, fallback);
-        }
-
-        UpdatePresentation(() =>
-        {
-            _showingNegative = false;
-            // The patch up now belongs to the negative view being left.
-            ClearSharpPatch();
-            if (saved is not null)
-                PublishCompletePreview(saved, refreshSprocketMask: true);
-            _savedPositive = null;
-            _savedPositiveScene = null;
-            _savedPositiveRenderedFrame = null;
-        });
-        ScheduleRender();
-    }
-
-    // ── Before/after compare: show the positive WITHOUT Stage-2 (scene) edits ─────
-    public void ShowBeforeEdits()
-    {
-        if (_previewWorking is null) return;
-        FrameParams p = BuildParams();
-        RollFrame.ResetScene(p);   // strip every Stage-2 adjustment
-        RenderedFrame rendered = Pipeline.Render(
-            _previewWorking,
-            ForPreview(p),
-            _colorPipelineVersion,
-            ColorManagement);
-        PreparedPreview preview = PreparePreview(rendered, ShowClipping);
-        UpdatePresentation(() =>
-        {
-            _showingBeforeEdits = true;
-            ClearSharpPatch();   // patch was rendered WITH the Stage-2 edits this view strips
-            PublishCompletePreview(preview, refreshSprocketMask: true);
-        });
-    }
-
-    public void ShowAfterEdits()
-    {
-        _showingBeforeEdits = false;
-        ScheduleRender();   // re-render the fully edited positive
-    }
-
-    // ══ Stage-1 sampling (reads the linear negative) ═══════════════════════════
-    //
-    // RESOLUTION: every sampler reads the PREVIEW, never a full-res decode — the same choice the
-    // Python GUI makes (_sampling_source → _oriented_raw → the _raw_cache preview). These are all
-    // rect means over a blurred patch, and box-downsampling is itself a local mean, so the numbers
-    // barely move; holding a ~288 MB full-res buffer resident just to average a rectangle is what
-    // used to force a multi-second re-decode on every frame selection.
-    /// <summary>
-    /// The negative in the pipeline's Stage-1 sampling domain — i.e. exactly the buffer that
-    /// <see cref="Pipeline.ProcessFrame"/> hands to the density inversion. On Path A that is the
-    /// DECOUPLED image, and the decoupled image is the START of every measurement: the pipeline
-    /// runs LCC → vignette → decouple BEFORE dividing by t_base and applying wb_offset / wb_high /
-    /// d_max, so a sample taken any earlier sits in a colour basis the renderer never produces and
-    /// the positive drifts (magenta / WB cast).
-    ///
-    /// EVERY value sampler — t_base, wb_offset, wb_high, d_max, scan_ev, the film-base bright
-    /// reference, Deep-WB's highlight density — must read this. Only the MASK/THRESHOLD family
-    /// (sprocket luma cuts, dark valley) stays on the raw negative, where those thresholds are
-    /// calibrated and where <see cref="Pipeline.ProcessFrame"/> also builds its runtime mask;
-    /// that split is the <c>images</c> / <c>valueImages</c> contract in <see cref="FilmBase"/>.
-    ///
-    /// Distortion is deliberately NOT applied: it is geometric, and sampling rects arrive in the
-    /// coordinates of the displayed (already-distortion-corrected) preview.
-    /// </summary>
-    private ImageBuffer? Stage1Source(ImageBuffer? neg)
-    {
-        if (neg is null) return null;
-        ImageBuffer? lcc = LccEnabled && LccAvailable ? _lccFlatField : null;
-        if (lcc is null && VignetteAmount == 0.0 && _decoupleMatrix is null && !Monochrome) return neg;
-
-        var src = new ImageBuffer(neg.Width, neg.Height, (float[])neg.Data.Clone())
-            .InheritSourceFrom(neg);
-        if (lcc is not null)
-            Lcc.Apply(src.Data, src.Width, src.Height, lcc);
-        if (VignetteAmount != 0.0)
-            LensCorrections.ApplyVignette(src.Data, src.Width, src.Height, VignetteAmount, VignetteFalloff);
-        if (_decoupleMatrix is not null)
-            Decouple.Apply(src.Data, _decoupleMatrix, DecoupleMode.Linear);
-        // The fold belongs here for the same reason decouple does: this method's contract is "the
-        // buffer the density inversion is handed", and on a black-and-white roll that buffer is
-        // folded. Measuring the unfolded channels and then rendering the folded one would put every
-        // endpoint out by the difference between green and the luminance mix — around 0.08 D on a
-        // copy light that is not neutral, which lands squarely in the shadows.
-        // Fully qualified: the view model's own Monochrome property shadows the Core type's name.
-        if (Monochrome) OpenRevelare.Core.Monochrome.FoldInPlace(src.Data);
-        return src;
-    }
-
-    /// <summary>
-    /// Run a rect sampler, turning a rejected selection into a status message.
-    ///
-    /// The FilmBase samplers throw ArgumentException on a region they cannot use (density ≤ 0,
-    /// non-positive T_base). These run straight off a pointer-released handler, so an escaping
-    /// exception unwinds through Avalonia's event dispatch and terminates the process — picking a
-    /// slightly wrong rectangle must cost a message, not the whole session and every unsaved edit.
-    /// </summary>
-    private void TrySample(string what, Action sample)
-    {
-        try { sample(); }
-        catch (Exception ex) { StatusText = Loc.F($"{what}失败：{ex.Message}"); }
-    }
-
-    /// <summary>
-    /// 片基采样：量出裸片基的**绝对密度**，写进黑端。
-    ///
-    /// 密度对 T=1 而言（TBase 恒为 1,1,1），所以量到的就是 −log10(片基透射率)。C-41 的橙色
-    /// 片基必然 R&lt;G&lt;B，典型 ~0.09/0.29/0.54——这三个数是可验证的物理量。
-    ///
-    /// 曾经这里写的是 t_base（除数），黑端则恒为 0,0,0。那样片基信息藏在一个没有滑块的字段
-    /// 里，界面上看不到黑端的任何客观数值，用户无从判断自动标定对不对。两种写法渲染逐位相同
-    /// （把片基从除数移到减数是同一个仿射变换），所以改成显示绝对值没有代价。
-    /// </summary>
-    public void SampleFilmBase((double X, double Y, double W, double H) rect) => TrySample(Loc.T("片基采样"), () =>
-    {
-        if (Stage1Source(_previewLinear) is not { } src) return;
-        double[] tb = FilmBase.SampleTBase(src, rect);
-        _calibrationDiagnosticsRollWide = false;
-        _filmBaseSampled = true;
-        // 亮端不动：它已经是对 T=1 的绝对密度，与这次采样无关。只有黑端被重新定义。
-        DMinPerChannel = TBaseToDensity(tb);
-        // Sanity gate: the film base is the most transmissive part of a negative, so a t_base far
-        // below the frame's p99.9 almost certainly missed it.
-        //
-        // The reference MUST come from the same buffer the t_base did — i.e. the Stage-1
-        // (decoupled) domain. Comparing a decoupled t_base against a raw p99.9 is a domain
-        // mismatch that fires this warning on perfectly good Path A picks. Reusing `src` is also
-        // what keeps it cheap: deriving it separately cloned the whole preview a second time and
-        // re-ran LCC → vignette → decouple over it — ~20 MB and a full photometric pass for one
-        // 0.4× comparison. Measuring on the preview rather than full-res is fine; the gate is a
-        // loose heuristic and box-downsampling barely moves a 99.9th percentile.
-        // Compared on TOTAL transmission against a LOW threshold — both halves matter.
-        //
-        // Per channel was wrong because the base is orange: a real C-41 base at UniWB reads about
-        // (0.21, 0.18, 0.06), blue at 30% of red, while the frame's p99.9 comes from bare light
-        // panel and sprocket holes that carry no mask at all and are green-dominant on top of it.
-        // Testing channel-by-channel asks the mask's most-absorbed channel to rival an unfiltered
-        // one, which no correctly sampled base can do.
-        //
-        // 0.4 was wrong because the mask is DENSE (~0.5–0.8 D). Such a base transmits well under
-        // half of bare-panel light by construction, so demanding 40% demanded that the mask barely
-        // absorb. What actually separates "found the base" from "missed it" is that picture
-        // content is denser still: measured ratios run 0.19–0.61 for real bases against 0.05–0.11
-        // for a rect that landed on the picture or a shadow. 0.08 sits below the former and under
-        // the latter with room to spare.
-        double[] br = ImageIo.BrightReference(src);
-        double tbSum = tb[0] + tb[1] + tb[2];
-        double brSum = br[0] + br[1] + br[2];
-        if (tbSum < brSum * 0.08)
-        {
-            FilmBaseText = Loc.T("⚠ 采样区偏暗，可能不是片基——请在负片视图中对准最亮的橙色片基重采");
-            StatusText = FilmBaseText;
-        }
-        else
-        {
-            FilmBaseText = Loc.T("片基：手动物理采样 · 用户确认区域");
-            StatusText = Loc.F($"片基采样 → 黑端 {DMinR:F3} / {DMinG:F3} / {DMinB:F3}");
-        }
-    });
-
-    /// <summary>
-    /// 透射率 → 对 T=1 的绝对密度。片基采样与自动片基共用，保证两条路写出同一个量。
-    /// </summary>
-    private static double[] TBaseToDensity(double[] t)
-    {
-        var d = new double[3];
-        for (int c = 0; c < 3; c++) d[c] = -Math.Log10(Math.Max(t[c], 1e-10));
-        return d;
-    }
-
-    /// <summary>
-    /// <see cref="TBaseToDensity"/> 的逆：黑端的绝对密度 → 片基透射率，给高光估计器当参考。
-    /// 估计器于是在「相对片基」的密度（= 跨度）上选帧、抬升，结果再由 <see cref="AddDMin"/>
-    /// 变回绝对密度写入亮端。为什么必须这样，见 AutoInvertRollAsync 第二阶段的说明。
-    /// </summary>
-    private static double[] TBaseFromDensity(double[] dMin)
-    {
-        var t = new double[3];
-        for (int c = 0; c < 3; c++) t[c] = Math.Pow(10.0, -dMin[c]);
-        return t;
-    }
-
-    /// <summary>相对片基的高光密度（跨度）→ 对 T=1 的绝对密度，即 <c>span + D_min</c>。</summary>
-    private static double[] AddDMin(double[] span, double[] dMin)
-    {
-        var d = new double[3];
-        for (int c = 0; c < 3; c++) d[c] = span[c] + dMin[c];
-        return d;
-    }
-
-    /// <summary>
-    /// 高光采样：框负片上最浓的区域（= 正片高光），测出亮端三个密度。
-    ///
-    /// 这里曾有两个按钮——「框选亮部」解白平衡、「框选 D_max」定端点——它们测的是同一个量，
-    /// 只是一个把结果normalise成比例、一个保留绝对值。高光白平衡与高光端点本就是一件事，
-    /// 所以合并成一个。
-    /// </summary>
-    public void SampleDMax((double X, double Y, double W, double H) rect) => TrySample(Loc.T("高光采样"), () =>
-    {
-        if (Stage1Source(_previewLinear) is not { } src) return;
-        double[] hi = FilmBase.SampleDMaxPerChannelFromRect(src, rect, TBaseArr());
-        _calibrationDiagnosticsRollWide = false;
-        DMaxPerChannel = hi;
-        HighlightConfidenceText = Loc.T("高光：手动采样端点 · 用户确认区域");
-        StatusText = Loc.F($"高光采样 → 亮端 {DMaxLevel:F3}（逐通道 {hi[0]:F3} / {hi[1]:F3} / {hi[2]:F3}）");
-    });
-
-    /// <summary>面板上常驻的灰卡读数；没采过时为空，换卷清空。</summary>
-    [ObservableProperty] private string _greyCardText = "";
-
-    /// <summary>
-    /// 中性灰采样：框负片上拍到的灰卡，量出三个绝对密度，解出让它成为 Cineon 标准灰的亮端——
-    /// 三通道都落在码值 470（<see cref="FrameParams.CineonGreyCode"/>）。灰卡于是同时决定色偏
-    /// 和曝光位置：这是 LAD 式的绝对锚点，一卷里唯一有资格定曝光的输入，因为它是对场景的测量
-    /// 而不是网络的推测。
-    ///
-    /// 这是「高光采样」的同一个测量挪到中间调：高光采样断言框内区域在 1032 处中性，这里断言
-    /// 它在 470 处中性。黑端由片基钉住后每通道只剩一个自由度，所以两者是替代关系——后采的赢。
-    /// 有灰卡时它替代「智能色偏修正」。
-    ///
-    /// 状态栏报亮度较采样前的标定放置动了几档：每码 0.002 密度、经 0.6 印片响应。标定本来就
-    /// 把灰卡放在 470 附近时这个数接近 0，画面看不出变化是预期的，不是没生效。
-    /// </summary>
-    public void SampleNeutralGrey((double X, double Y, double W, double H) rect) => TrySample(Loc.T("中性灰采样"), () =>
-    {
-        if (Stage1Source(_previewLinear) is not { } src) return;
-        // 同一个 RectMeanDensity、同一个 T=1 参考：与高光采样、片基采样写出同一量纲的绝对密度。
-        double[] grey = FilmBase.SampleDMaxPerChannelFromRect(src, rect, TBaseArr());
-        double[] dMin = DMinPerChannel, before = DMaxPerChannel;
-        double[] hi = DensityEndpoints.HighlightFromNeutralAtCode(grey, dMin, FrameParams.CineonGreyCode);
-        _calibrationDiagnosticsRollWide = false;
-        DMaxPerChannel = hi;
-        HighlightConfidenceText = Loc.T("高光：灰卡物理锚点 · Cineon 470 · 用户确认区域");
-
-        double CardCode(double[] dMax)
-        {
-            var ep = DensityEndpoints.FromMeasured(dMax, FrameParams.OutputRange, dMin);
-            return (ep.CodeOf(0, grey[0]) + ep.CodeOf(1, grey[1]) + ep.CodeOf(2, grey[2])) / 3.0;
-        }
-        double stops = (FrameParams.CineonGreyCode - CardCode(before)) * FrameParams.CineonDensityPerCode
-                       / ColorPipeline.ResponseGamma / Math.Log10(2.0);
-        GreyCardText = Loc.F($"灰卡 D {grey[0]:F3} / {grey[1]:F3} / {grey[2]:F3} → Cineon 标准灰 {FrameParams.CineonGreyCode:F0}");
-        StatusText = Loc.F($"中性灰采样 → 灰卡为 Cineon 标准灰 {FrameParams.CineonGreyCode:F0} · 亮度较标定 {stops:+0.00;-0.00} 档 · 亮端 {DMaxLevel:F3}（逐通道 {hi[0]:F3} / {hi[1]:F3} / {hi[2]:F3}）");
-    });
-
-    /// <summary>换卷时清掉上一卷的灰卡读数：它是那一卷那个光源下的测量。</summary>
-    private void ClearGreyCard() => GreyCardText = "";
-
-    /// <summary>
-    /// Measure the sprocket/light-board threshold from the imported frame, apply it to the whole
-    /// roll, then run the auto chain. The import-time entry point.
-    ///
-    /// The threshold has to be settled BEFORE the chain runs, not after: it is the light-board cut
-    /// that keeps the board out of both the film-base estimate and the highlight pick, and
-    /// re-running the chain later would be the only way to fold in a threshold that arrived
-    /// afterwards. That ordering is why this method — rather than the end of LoadRollAsync — is
-    /// where import-time auto-inversion belongs.
-    ///
-    /// This used to be a modal dialog the user had to clear before the roll would open. It is now
-    /// measured and applied silently: the dialog's own default was
-    /// <see cref="Sprocket.EstimateSprocketThreshold"/>'s answer, which is what runs here, and the
-    /// threshold stays adjustable in 整卷校准 → 齿孔遮罩 with the same live mask overlay.
-    ///
-    /// <see cref="Sprocket.NoBoard"/> is a real answer rather than a failure — a flatbed scan has
-    /// no light board, and forcing a cut onto one would mask off the film's own highlights. It maps
-    /// to SprocketEnabled = false, exactly what the dialog's 跳过 did.
-    ///
-    /// Note this decides only the MASK-FILL toggle (齿孔遮罩, which paints the board white in the
-    /// output). The automatic measurements exclude the board either way — they re-derive the cut
-    /// themselves through <see cref="FilmBase.HighDensityKeepMask"/> — so a roll that lands here
-    /// with no board still gets its statistics taken over film pixels only.
-    /// </summary>
-    public async Task ApplySprocketAutoAsync()
-    {
-        // Off the UI thread: unlike every other estimator on this path, this one decodes a frame
-        // at full resolution (see MeasureBoardCut), which is seconds rather than milliseconds on a
-        // 100 MP scan. The chain it hands off to at the end is already async for the same reason.
-        double? threshold = await Task.Run(MeasureBoardCut);
-
-        if (threshold is double thr)
-        {
-            SprocketEnabled = true; SprocketThreshold = thr;
-            foreach (RollFrame f in Frames) { f.Params.SprocketEnabled = true; f.Params.SprocketThreshold = thr; }
-        }
-        else
-        {
-            SprocketEnabled = false;
-            foreach (RollFrame f in Frames) f.Params.SprocketEnabled = false;
-        }
-        AutoInvertOnImportRun();
-        UpdateSprocketOverlay();
-    }
-
-    /// <summary>
-    /// The import-time run of <see cref="AutoInvertRollAsync"/>, gated on the import dialog's
-    /// checkbox (<see cref="ImportConfig.AutoInvert"/>).
-    ///
-    /// Unchecked means NOTHING is measured — not even the film base. The roll opens on pipeline
-    /// defaults and every value is the user's to set. An earlier version still auto-detected the
-    /// base here on the theory that a roll with no base at all is useless, but that makes the
-    /// checkbox lie: someone who unticks "自动整卷分析去色罩" is saying they intend to calibrate
-    /// this roll by hand, and silently seeding t_base both overwrites the starting point they
-    /// wanted and hides that anything happened.
-    /// </summary>
-    private void AutoInvertOnImportRun()
-    {
-        if (_cfgAutoInvert) _ = AutoInvertRollAsync();
-    }
-
-    /// <summary>
-    /// This import's auto-inversion choice, taken from the import dialog's checkbox.
-    ///
-    /// Held as a field because the decision is made in <see cref="LoadRollWithConfigAsync"/> but
-    /// acted on later, in <see cref="ApplySprocketAutoAsync"/> — the chain has to wait for the
-    /// sprocket threshold. Defaults true so a roll opened by any other route (a saved project, the
-    /// catalog) still behaves as before.
-    /// </summary>
-    private bool _cfgAutoInvert = true;
-
-    /// <summary>Estimate T_base excluding the light-board (given the sprocket threshold) → all frames.</summary>
-    /// <param name="useMode">
-    /// True → measure the base as the brightest dense luma MODE
-    /// (<see cref="FilmBase.EstimateTBaseByMode"/>), which is what the auto chain wants: on a
-    /// copy-stand negative the board's transition shoulder survives the board cut and owns every
-    /// bright tail, so a percentile lands on the shoulder rather than on the base. Falls back to
-    /// the roll estimator when no mode clears the density floor.
-    /// </param>
-    /// <returns>True if a base was estimated; false if the estimator rejected the frame.</returns>
-    private bool AutoFilmBaseFromRoll(double? sprocketThreshold, bool useMode = false,
-                                      bool broadcastToRoll = true)
-    {
-        if (_previewLinear is null) return false;
-        bool ok = false;
-        try
-        {
-            // Path A: t_base must live in the DECOUPLED domain (the pipeline decouples BEFORE
-            // dividing by t_base). Sample values from the decoupled negative; masks stay on the raw
-            // (its luma is where the sprocket threshold was calibrated). Mirrors Python's valueImages.
-            ImageBuffer? dec = Stage1Source(_previewLinear);
-            ImageBuffer? values = ReferenceEquals(dec, _previewLinear) ? null : dec;
-            double[]? tb = useMode
-                ? FilmBase.EstimateTBaseByMode(_previewLinear, sprocketThreshold, values)
-                : null;
-            bool physicalCandidate = tb is not null;
-            // Then the edge sliver: a scan with no board still often keeps a thin strip of bare
-            // rebate, which is the real base but far too small for any percentile to find. Tried
-            // before the tail estimator because when it answers at all it has identified an
-            // actual piece of film base, whereas the tail is a fallback that measures whatever
-            // happens to be brightest.
-            if (tb is null)
-            {
-                tb = FilmBase.EstimateTBaseFromEdgeSliver(
-                    _previewLinear, values, allowNeutralCarrier: Monochrome,
-                    upperLumaCut: sprocketThreshold);
-                physicalCandidate = tb is not null;
-            }
-            if (tb is null)
-                tb = values is null
-                    ? FilmBase.EstimateTBaseFromRoll(new[] { _previewLinear }, sprocketThreshold)
-                    : FilmBase.EstimateTBaseFromRoll(new[] { _previewLinear }, sprocketThreshold,
-                                                     valueImages: new[] { values });
-            // 片基的绝对密度进黑端；TBase 保持中性 1,1,1（参考点是完全透光）。
-            DMinPerChannel = TBaseToDensity(tb);
-            // Only broadcast to the whole roll when invoked from the roll-wide chain. Per-frame
-            // buttons (自动黑点, 自动单张) pass broadcastToRoll: false so the other frames keep
-            // whatever they already hold — overwriting their d_min is the bug those callers fix.
-            if (broadcastToRoll)
-            {
-                double[] dmin = DMinPerChannel;
-                foreach (RollFrame f in Frames) f.Params.DMinPerChannel = (double[])dmin.Clone();
-            }
-            _filmBaseSampled = true;
-            ok = true;
-
-            // Provenance, not channel order, decides whether this was a physical carrier pick.
-            // Camera-native RAW under a non-neutral copy light can legitimately read G > R even
-            // through an orange mask (measured on the ORF sample roll), so R>G>B is not a valid
-            // gate before the light/sensor has been characterised. Mode and edge topology are
-            // actual evidence; the bright-tail fallback is explicitly content inference.
-            if (physicalCandidate)
-            {
-                // A successful single-frame pick needs no persistent diagnostic line: the status
-                // already reports the action, and one frame cannot support the roll-style
-                // confidence wording. Keep the provisional message only while the roll pass is
-                // actually going to replace this first-frame answer with pooled evidence.
-                FilmBaseText = broadcastToRoll
-                    ? Monochrome
-                        ? Loc.T("片基：当前帧无色载体候选 · 整卷分析完成后给出置信度")
-                        : Loc.T("片基：当前帧物理片基候选 · 整卷分析完成后给出置信度")
-                    : "";
-                StatusText = Loc.T("已自动检测片基") + (sprocketThreshold is null ? Loc.T("（无齿孔模式）") : Loc.T("与齿孔阈值"));
-            }
-            else
-            {
-                FilmBaseText = Loc.T("⚠ 未测到裸露片基——自动结果只是画面最亮处，请手动【片基采样】");
-                StatusText = Loc.T("⚠ 未测到裸露片基：这一卷可能已裁掉片基区域，自动结果仅供参考——请用【片基采样】手动标定");
-            }
-        }
-        catch (Exception ex) { StatusText = Loc.T("自动片基检测失败：") + ex.Message; }
-        // When broadcasting, every frame just took new d_min so all thumbnails are stale — drop
-        // them before restarting. Otherwise DecodeThumbnailsAsync skips frames that still show
-        // stale thumbnails. For per-frame calls only the current frame's thumbnail needs refresh;
-        // the caller handles that.
-        if (ok && broadcastToRoll) foreach (RollFrame f in Frames) SetThumbnail(f, null);
-        RestartThumbnails();
-        return ok;
-    }
-
-    /// <summary>
-    /// The light-board cut the auto chain should use, measured from the frame rather than taken
-    /// from the sprocket dialog.
-    ///
-    /// The dialog cannot be trusted as the only source here. 跳过 leaves SprocketEnabled false
-    /// with no threshold, and the chain would then estimate the base in pure-brightness mode with
-    /// the board fully included — the board IS the brightest thing in frame, so it becomes the
-    /// "base", and t_base comes back near-clipped and neutral instead of orange. On a measured
-    /// sample that failure returned (0.568, 0.987, 0.591) — G highest of the three, which no
-    /// C-41 base can be — against a hand-sampled (0.200, 0.175, 0.060).
+            // negative viewer that happens to be on screen at this i…6204 tokens truncated…d-sampled (0.200, 0.175, 0.060).
     ///
     /// A user-set threshold still wins: an enabled 齿孔遮罩 means the cut was looked at on the real
     /// frame, and the estimator is a heuristic. Only when there is no user value does this measure
