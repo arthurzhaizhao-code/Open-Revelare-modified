@@ -1,15 +1,22 @@
 namespace OpenRevelare.Core;
 
 /// <summary>
-/// Independent final-output RGB alignment.
+/// Independent RGB alignment in normalised Cineon code values.
 ///
-/// This deliberately runs after colour conversion, the display rendering and Stage 2. Applying
-/// it earlier lets a later 3x3 colour matrix or a luma-driven operation spread an edit from one
-/// component into the other two, which makes manual parade alignment impossible to reason about.
+/// This is the signal the dedicated alignment parade reads: after the measured Dmin/Dmax endpoint
+/// map, before a print LUT, display rendering, output-space matrix or Stage 2. The endpoint values
+/// themselves are never rewritten. Gain pivots around Cineon black (code 95), so a neutral gain
+/// edit keeps the measured Dmin anchor fixed.
 /// </summary>
 public static class RgbChannelAlignment
 {
     public const double CodeScale = 1023.0;
+    private const float BlackCodeNormalised = (float)(FrameParams.CineonBlackCode / CodeScale);
+
+    /// <summary>
+    /// Apply the controls to an already Cineon-encoded RGB buffer. Shift is stated in code values;
+    /// gain is a scale about code 95. The three assignments are deliberately independent.
+    /// </summary>
 
     public static void Apply(float[] data, FrameParams cal, bool clampToUnit = false)
     {
@@ -33,9 +40,9 @@ public static class RgbChannelAlignment
         {
             for (int i = from; i < to; i += 3)
             {
-                data[i] = (data[i] + s0) * g0;
-                data[i + 1] = (data[i + 1] + s1) * g1;
-                data[i + 2] = (data[i + 2] + s2) * g2;
+                data[i] = BlackCodeNormalised + (data[i] - BlackCodeNormalised) * g0 + s0;
+                data[i + 1] = BlackCodeNormalised + (data[i + 1] - BlackCodeNormalised) * g1 + s1;
+                data[i + 2] = BlackCodeNormalised + (data[i + 2] - BlackCodeNormalised) * g2 + s2;
                 if (clampToUnit)
                 {
                     data[i] = Math.Clamp(data[i], 0.0f, 1.0f);
@@ -44,5 +51,30 @@ public static class RgbChannelAlignment
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// Apply the same Cineon-domain operation to Stage-1's linear-positive carrier. The log pair
+    /// is exact to float precision and lets all existing display and print-LUT exits consume the
+    /// adjusted Cineon signal without each exit reimplementing the alignment slot.
+    /// </summary>
+    public static void ApplyToLinearPositive(float[] data, FrameParams cal)
+    {
+        if (!IsActive(cal)) return;
+        LogEncoding.ToCineon(data);
+        Apply(data, cal);
+        LogEncoding.FromCineon(data);
+    }
+
+    private static bool IsActive(FrameParams cal)
+    {
+        double[] shift = cal.RgbAlignShift;
+        double[] gain = cal.RgbAlignGain;
+        if (shift.Length != 3 || gain.Length != 3)
+            throw new ArgumentException("RGB alignment requires three shifts and three gains", nameof(cal));
+        for (int c = 0; c < 3; c++)
+            if (Math.Abs(shift[c]) > 1e-12 || Math.Abs(gain[c] - 1.0) > 1e-12)
+                return true;
+        return false;
     }
 }

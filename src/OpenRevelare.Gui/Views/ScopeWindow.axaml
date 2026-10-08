@@ -19,7 +19,7 @@
                     <TextBlock Text="{i18n:T '波形'}" />
                 </ToggleButton>
                 <ToggleButton Padding="12,5" IsChecked="{Binding ShowRgbParade, Mode=TwoWay}">
-                    <TextBlock Text="{i18n:T 'YRGB 分量'}" />
+                    <TextBlock Text="{i18n:T 'YRGB · Cineon'}" />
                 </ToggleButton>
                 <ToggleButton Padding="12,5" IsChecked="{Binding ShowVectorscope, Mode=TwoWay}">
                     <TextBlock Text="{i18n:T '矢量图'}" />

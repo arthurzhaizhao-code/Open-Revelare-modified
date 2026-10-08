@@ -190,8 +190,10 @@ public partial class MainViewModel
             _previewRenderedFrame = rendered;
             PreviewImage = fallback;
             Histogram = histogram;
-            // One place for every publication path, and only when it is on screen.
-            Waveform = ShowsWaveformData ? WaveformData.FromBuffer(rendered.Pixels) : null;
+            // Waveform/parade deliberately read the cached Cineon calibration signal rather than
+            // this final rendered frame. That keeps print LUT, display conversion, Stage 2 and
+            // output-space matrices out of the channel-alignment diagnostic.
+            Waveform = ShowsWaveformData ? _cineonWaveform : null;
             Vectorscope = ShowsVectorscopeData ? VectorscopeData.FromBuffer(rendered.Pixels) : null;
             ClippingOverlay = clippingOverlay;
             ClippingScene = clippingScene;
@@ -210,6 +212,8 @@ public partial class MainViewModel
         UpdatePresentation(() =>
         {
             _previewRenderedFrame = null;
+            _cineonWaveform = null;
+            Waveform = null;
             PreviewHighlightHeadroom = 1f;
             PreviewScene = null;
             ClippingScene = null;

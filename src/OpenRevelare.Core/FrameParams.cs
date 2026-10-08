@@ -154,10 +154,9 @@ public sealed class FrameParams
     public double[] DMinPerChannel { get; set; } = { 0.0, 0.0, 0.0 };
 
     /// <summary>
-    /// Final-output RGB alignment, after every colour-space matrix and creative adjustment.
-    /// Shift is expressed in normalised 10-bit code units (one unit = 1/1023), and gain is a
-    /// direct multiplier. Keeping this at the end of the render is intentional: changing one
-    /// component must not move either of the other two components on the RGB parade.
+    /// Independent Cineon-signal RGB alignment after the measured endpoints and before display
+    /// rendering. Shift is expressed in 10-bit code units and gain pivots around Cineon black
+    /// (code 95). These controls never rewrite DMinPerChannel or DMaxPerChannel.
     /// </summary>
     public double[] RgbAlignShift { get; set; } = { 0.0, 0.0, 0.0 };
     public double[] RgbAlignGain { get; set; } = { 1.0, 1.0, 1.0 };

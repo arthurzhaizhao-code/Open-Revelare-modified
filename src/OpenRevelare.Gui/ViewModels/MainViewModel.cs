@@ -1432,11 +1432,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <inheritdoc cref="ClipShadowPercent"/>
     [ObservableProperty] private double _clipHighlightPercent = Settings.Current.ClipHighlightThreshold * 100d;
 
-    /// <summary>The diagnostic occupying the single scope slot. Scope data is computed only for
-    /// the selected view; every view inspects the final rendered positive.</summary>
+    /// <summary>The diagnostic occupying the single scope slot. Histogram and vectorscope inspect
+    /// the rendered positive; waveform and YRGB inspect the pre-display Cineon signal used for
+    /// channel alignment.</summary>
     [ObservableProperty] private ScopeDisplayMode _scopeMode;
     [ObservableProperty] private ScopeScaleMode _scopeScale = ScopeScaleMode.TenBit;
     [ObservableProperty] private WaveformData? _waveform;
+    private WaveformData? _cineonWaveform;
     [ObservableProperty] private VectorscopeData? _vectorscope;
 
     public bool ShowHistogram
@@ -1493,15 +1495,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         bool showsWaveformData = value is ScopeDisplayMode.Waveform or ScopeDisplayMode.RgbParade;
         bool showsVectorscopeData = value == ScopeDisplayMode.Vectorscope;
+        bool needsCineonRender = showsWaveformData && _cineonWaveform is null && _previewWorking is not null;
         HistogramData? histogram = value == ScopeDisplayMode.Histogram &&
                                    _previewRenderedFrame is { } rendered
             ? HistogramData.FromFrame(rendered, CurrentTargetHeadroom)
             : Histogram;
         UpdatePresentation(() =>
         {
-            Waveform = showsWaveformData && _previewRenderedFrame is { } current
-                ? WaveformData.FromBuffer(current.Pixels)
-                : null;
+            Waveform = showsWaveformData ? _cineonWaveform : null;
             Vectorscope = showsVectorscopeData && _previewRenderedFrame is { } vectorFrame
                 ? VectorscopeData.FromBuffer(vectorFrame.Pixels)
                 : null;
@@ -1513,6 +1514,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(ShowsSignalScaleControls));
             InvalidatePresentation();
         });
+        if (needsCineonRender) RenderNow();
     }
 
     partial void OnScopeScaleChanged(ScopeScaleMode value)

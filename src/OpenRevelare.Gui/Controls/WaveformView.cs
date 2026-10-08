@@ -70,18 +70,18 @@ public sealed class WaveformData
     /// </summary>
     public required float ColumnSamples { get; init; }
 
-    /// <summary>Columns are the horizontal resolution of the plot. 256 is finer than the panel is
-    /// wide, so the plot is never the limiting factor, and coarse enough to stay cheap.</summary>
-    public const int DefaultColumns = 256;
+    /// <summary>Horizontal scope resolution. The same data also feeds the enlarged scope window;
+    /// 512 columns keep its traces crisp instead of scaling a 256-column preview bitmap.</summary>
+    public const int DefaultColumns = 512;
 
-    /// <summary>Levels are the vertical resolution. 160 over a ~70 px plot means every drawn row
-    /// has samples behind it rather than being interpolated.</summary>
-    public const int DefaultLevels = 160;
+    /// <summary>Vertical scope resolution. 512 preserves code-level shape in the enlarged view;
+    /// compact panels simply downsample this bitmap.</summary>
+    public const int DefaultLevels = 512;
 
     /// <summary>
-    /// Bin a display-referred [0,1] RGB buffer. Values above white (an extended render) are pinned
-    /// to the top row: the waveform is a diagnostic of the picture's SHAPE, and an HDR frame's
-    /// headroom belongs to the histogram, which has an axis for it.
+    /// Bin a normalised RGB signal. Values above the selected 0–1 scope range are pinned to the
+    /// top row. Waveform/parade currently feed this with normalised Cineon code values; the method
+    /// remains encoding-agnostic so tests and other diagnostic callers can reuse it.
     ///
     /// Parallelised by output COLUMN, so no two tasks touch the same cell and nothing has to be
     /// merged afterwards.
@@ -181,7 +181,7 @@ public sealed class WaveformView : Control
     /// standard way a waveform monitor keeps thin traces visible without blowing out thick ones.
     /// At 0.3 a cell holding 1% of its column still reads at a quarter brightness.
     /// </summary>
-    private const float TraceGamma = 0.3f;
+    private const float TraceGamma = 0.22f;
 
     public override void Render(DrawingContext ctx)
     {

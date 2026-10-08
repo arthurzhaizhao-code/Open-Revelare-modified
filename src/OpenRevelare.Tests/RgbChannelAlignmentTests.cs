@@ -40,4 +40,23 @@ public sealed class RgbChannelAlignmentTests
         Assert.Equal(new[] { 0.09, 0.29, 0.54 }, cal.DMinPerChannel);
         Assert.Equal(new[] { 0.1f, 0.2f, 0.3f }, pixels);
     }
+
+    [Fact]
+    public void GainPivotsAroundCineonBlackWithoutMovingDmin()
+    {
+        float black = (float)(FrameParams.CineonBlackCode / RgbChannelAlignment.CodeScale);
+        var pixels = new[] { black, 470f / 1023f, 685f / 1023f };
+        var cal = new FrameParams
+        {
+            DMinPerChannel = new[] { 0.09, 0.29, 0.54 },
+            RgbAlignGain = new[] { 1.25, 1.0, 1.0 },
+        };
+
+        RgbChannelAlignment.Apply(pixels, cal);
+
+        Assert.Equal(black, pixels[0]);
+        Assert.Equal(470f / 1023f, pixels[1]);
+        Assert.Equal(685f / 1023f, pixels[2]);
+        Assert.Equal(new[] { 0.09, 0.29, 0.54 }, cal.DMinPerChannel);
+    }
 }

@@ -42,7 +42,7 @@ public sealed class RgbParadeView : Control
 
     private WriteableBitmap? _bitmap;
     private int _bitmapColumns, _bitmapLevels;
-    private const float TraceGamma = 0.3f;
+    private const float TraceGamma = 0.22f;
 
     public override void Render(DrawingContext ctx)
     {
@@ -67,6 +67,8 @@ public sealed class RgbParadeView : Control
             ctx.DrawLine(grid, new Point(plot.X, y), new Point(plot.Right, y));
         }
 
+        DrawCineonDiffuseWhite(ctx, plot, ShowScaleLabels);
+
         var divider = new Pen(new SolidColorBrush(Color.FromArgb(115, 120, 126, 134)), 1);
         for (int panel = 1; panel < 4; panel++)
         {
@@ -76,6 +78,20 @@ public sealed class RgbParadeView : Control
 
         DrawChannelLabels(ctx, plot, h);
         if (ShowScaleLabels) DrawScale(ctx, plot, ScaleMode);
+    }
+
+    private static void DrawCineonDiffuseWhite(DrawingContext ctx, Rect plot, bool showLabel)
+    {
+        const double diffuseWhiteCode = 685d;
+        double y = plot.Y + plot.Height * (1d - diffuseWhiteCode / 1023d);
+        var brush = new SolidColorBrush(Color.FromArgb(205, 238, 193, 74));
+        ctx.DrawLine(new Pen(brush, 1.25), new Point(plot.X, y), new Point(plot.Right, y));
+        if (!showLabel) return;
+
+        var ft = new FormattedText("Cineon 685", CultureInfo.InvariantCulture,
+                                   FlowDirection.LeftToRight, Typeface.Default, 10, brush);
+        double x = Math.Max(plot.X + 4, plot.Right - ft.Width - 5);
+        ctx.DrawText(ft, new Point(x, Math.Max(plot.Y + 1, y - ft.Height - 2)));
     }
 
     private static void DrawChannelLabels(DrawingContext ctx, Rect plot, double height)
