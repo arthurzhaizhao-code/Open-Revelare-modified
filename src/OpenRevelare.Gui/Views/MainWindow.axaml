@@ -1049,18 +1049,6 @@
                                         <TextBlock Classes="groupHint" Text="{Binding FilmBaseText}"
                                                    IsVisible="{Binding FilmBaseText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    TextWrapping="Wrap" />
-                                        <!-- 只有这一组 RGB。片基透射率 T_base 不再给滑块：它与
-                                             D_min 描述的是同一件事——黑端在哪、暗部偏什么色（实测
-                                             改任一个都在动同一个量）。T_base 由【片基采样】写入，
-                                             D_min 才是与 D_max 同量纲、可直接相减的那个。-->
-                                        <Expander Header="{i18n:T '逐通道'}" Theme="{StaticResource SubExpander}" Margin="0,4,0,0"
-                                                  IsVisible="{Binding IsColourRoll}">
-                                            <StackPanel Spacing="1">
-                                                <ctl:SliderRow Label="R" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinR}" TrackBrush="{DynamicResource TrackRBrush}" />
-                                                <ctl:SliderRow Label="G" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinG}" TrackBrush="{DynamicResource TrackGBrush}" />
-                                                <ctl:SliderRow Label="B" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinB}" TrackBrush="{DynamicResource TrackBBrush}" />
-                                            </StackPanel>
-                                        </Expander>
                                     </StackPanel>
                                 </Expander>
 
@@ -1091,12 +1079,33 @@
                                         <TextBlock Classes="groupHint" Text="{Binding HighlightConfidenceText}"
                                                    IsVisible="{Binding HighlightConfidenceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    TextWrapping="Wrap" />
-                                        <Expander Header="{i18n:T '逐通道'}" Theme="{StaticResource SubExpander}" Margin="0,4,0,0"
-                                                  IsVisible="{Binding IsColourRoll}">
+                                    </StackPanel>
+                                </Expander>
+
+                                <!-- NamiColor-style manual channel alignment, expressed through the
+                                     same canonical endpoint affine that the renderer already uses.
+                                     These are deliberately not a second correction stage: Offset edits
+                                     D_min and Gain/Span edits D_max, so the image is corrected once. -->
+                                <Expander Header="{i18n:T 'RGB 三通道对齐（密度域）'}" IsExpanded="True" Tag="3"
+                                          IsVisible="{Binding IsColourRoll}"
+                                          ToolTip.Tip="{i18n:T '配合 YRGB 分量图手工对齐。先用暗部 Offset 对齐黑位，再用亮部 Gain / Span 对齐高光；直接写入上面的 D_min / D_max，不会叠加第二次校正。'}">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Classes="groupHint" TextWrapping="Wrap"
+                                                   Text="{i18n:T '查看 YRGB 分量图：先调暗部 Offset，使中性黑位的 R/G/B 高度一致；再调亮部 Gain / Span，使中性高光一致。G 可作为参考。数值是绝对光学密度。'}" />
+                                        <Expander Header="{i18n:T '暗部 Offset / Shift'}" Theme="{StaticResource SubExpander}" IsExpanded="True"
+                                                  ToolTip.Tip="{i18n:T '改变各通道 D_min，即密度域仿射的偏移端。主要控制阴影和片基端的色偏。'}">
                                             <StackPanel Spacing="1">
-                                                <ctl:SliderRow Label="R" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxR}" TrackBrush="{DynamicResource TrackRBrush}" ToolTip.Tip="{i18n:T '高级：单独改变红色亮端，会改变高光色偏。'}" />
-                                                <ctl:SliderRow Label="G" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxG}" TrackBrush="{DynamicResource TrackGBrush}" ToolTip.Tip="{i18n:T '高级：单独改变绿色亮端，会改变高光色偏。'}" />
-                                                <ctl:SliderRow Label="B" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxB}" TrackBrush="{DynamicResource TrackBBrush}" ToolTip.Tip="{i18n:T '高级：单独改变蓝色亮端，会改变高光色偏。'}" />
+                                                <ctl:SliderRow Label="R" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinR}" TrackBrush="{DynamicResource TrackRBrush}" />
+                                                <ctl:SliderRow Label="G" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinG}" TrackBrush="{DynamicResource TrackGBrush}" />
+                                                <ctl:SliderRow Label="B" Minimum="-0.5" Maximum="2" Decimals="3" Increment="0.001" DefaultValue="0" Value="{Binding DMinB}" TrackBrush="{DynamicResource TrackBBrush}" />
+                                            </StackPanel>
+                                        </Expander>
+                                        <Expander Header="{i18n:T '亮部 Gain / Span'}" Theme="{StaticResource SubExpander}" IsExpanded="True"
+                                                  ToolTip.Tip="{i18n:T '改变各通道 D_max 与 D_min 的跨度，即密度域仿射的增益端。主要控制高光色偏与通道反差。'}">
+                                            <StackPanel Spacing="1">
+                                                <ctl:SliderRow Label="R" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxR}" TrackBrush="{DynamicResource TrackRBrush}" />
+                                                <ctl:SliderRow Label="G" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxG}" TrackBrush="{DynamicResource TrackGBrush}" />
+                                                <ctl:SliderRow Label="B" Minimum="0.3" Maximum="4" Decimals="3" Increment="0.001" DefaultValue="2" Value="{Binding DMaxB}" TrackBrush="{DynamicResource TrackBBrush}" />
                                             </StackPanel>
                                         </Expander>
                                     </StackPanel>
@@ -1108,7 +1117,7 @@
                                      与高光采样互为替代，后按的生效。白平衡不在这里——那是场景光源的事，在 Display。-->
                                 <!-- Header and hint follow the film type: the grey card is an exposure
                                      anchor on a black-and-white roll, not a cast correction. -->
-                                <Expander Header="{Binding CastCardHeader}" IsExpanded="True" Tag="3"
+                                <Expander Header="{Binding CastCardHeader}" IsExpanded="True" Tag="4"
                                           ToolTip.Tip="{Binding CastCardHint}">
                                     <StackPanel Spacing="2">
                                         <Grid ColumnDefinitions="*,*">
