@@ -28,7 +28,17 @@ public sealed class RgbParadeView : Control
         set => SetValue(ShowScaleLabelsProperty, value);
     }
 
-    static RgbParadeView() => AffectsRender<RgbParadeView>(DataProperty, ShowScaleLabelsProperty);
+    public static readonly StyledProperty<ScopeScaleMode> ScaleModeProperty =
+        AvaloniaProperty.Register<RgbParadeView, ScopeScaleMode>(nameof(ScaleMode), ScopeScaleMode.TenBit);
+
+    public ScopeScaleMode ScaleMode
+    {
+        get => GetValue(ScaleModeProperty);
+        set => SetValue(ScaleModeProperty, value);
+    }
+
+    static RgbParadeView() =>
+        AffectsRender<RgbParadeView>(DataProperty, ShowScaleLabelsProperty, ScaleModeProperty);
 
     private WriteableBitmap? _bitmap;
     private int _bitmapColumns, _bitmapLevels;
@@ -50,9 +60,10 @@ public sealed class RgbParadeView : Control
                           plot);
 
         var grid = new Pen(new SolidColorBrush(Color.FromArgb(70, 120, 126, 134)), 1);
-        for (int q = 1; q < 4; q++)
+        int divisions = ShowScaleLabels ? ScopeScale.Divisions(ScaleMode) : 4;
+        for (int q = 1; q < divisions; q++)
         {
-            double y = plot.Y + plot.Height * q / 4d;
+            double y = plot.Y + plot.Height * q / divisions;
             ctx.DrawLine(grid, new Point(plot.X, y), new Point(plot.Right, y));
         }
 
@@ -64,7 +75,7 @@ public sealed class RgbParadeView : Control
         }
 
         DrawChannelLabels(ctx, plot, h);
-        if (ShowScaleLabels) DrawScale(ctx, plot);
+        if (ShowScaleLabels) DrawScale(ctx, plot, ScaleMode);
     }
 
     private static void DrawChannelLabels(DrawingContext ctx, Rect plot, double height)
@@ -82,14 +93,16 @@ public sealed class RgbParadeView : Control
         }
     }
 
-    private static void DrawScale(DrawingContext ctx, Rect plot)
+    private static void DrawScale(DrawingContext ctx, Rect plot, ScopeScaleMode scaleMode)
     {
         var brush = new SolidColorBrush(Color.FromArgb(170, 230, 232, 235));
-        for (int q = 0; q <= 4; q++)
+        int divisions = ScopeScale.Divisions(scaleMode);
+        for (int q = 0; q <= divisions; q++)
         {
-            var ft = new FormattedText((100 - q * 25) + "%", CultureInfo.InvariantCulture,
+            var ft = new FormattedText(ScopeScale.Label(scaleMode, q, divisions),
+                                       CultureInfo.InvariantCulture,
                                        FlowDirection.LeftToRight, Typeface.Default, 10, brush);
-            double y = Math.Clamp(plot.Y + plot.Height * q / 4d - ft.Height / 2d,
+            double y = Math.Clamp(plot.Y + plot.Height * q / divisions - ft.Height / 2d,
                                   0, plot.Bottom - ft.Height);
             ctx.DrawText(ft, new Point(Math.Max(1, plot.X - ft.Width - 4), y));
         }

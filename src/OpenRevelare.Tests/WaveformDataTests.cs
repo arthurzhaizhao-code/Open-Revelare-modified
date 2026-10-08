@@ -10,6 +10,21 @@ namespace OpenRevelare.Tests;
 /// </summary>
 public sealed class WaveformDataTests
 {
+    [Theory]
+    [InlineData(0, "1023")]
+    [InlineData(1, "895")]
+    [InlineData(2, "767")]
+    [InlineData(3, "639")]
+    [InlineData(4, "512")]
+    [InlineData(5, "384")]
+    [InlineData(6, "256")]
+    [InlineData(7, "128")]
+    [InlineData(8, "0")]
+    public void Ten_bit_scope_scale_covers_the_full_code_range(int tick, string expected)
+    {
+        Assert.Equal(expected, ScopeScale.Label(ScopeScaleMode.TenBit, tick, divisions: 8));
+    }
+
     private static float[] Fill(int w, int h, Func<int, int, (float R, float G, float B)> f)
     {
         var data = new float[w * h * 3];

@@ -8,6 +8,33 @@ using OpenRevelare.Core;
 
 namespace OpenRevelare.Gui.Controls;
 
+/// <summary>The vertical ruler used by signal-level scopes.</summary>
+public enum ScopeScaleMode
+{
+    TenBit,
+    Percent,
+    Ire,
+}
+
+internal static class ScopeScale
+{
+    public static int Divisions(ScopeScaleMode mode) => mode == ScopeScaleMode.TenBit ? 8 : 4;
+
+    public static string Label(ScopeScaleMode mode, int tick, int divisions)
+    {
+        double fraction = 1d - tick / (double)divisions;
+        return mode switch
+        {
+            ScopeScaleMode.TenBit => Math.Round(fraction * 1023d,
+                                                MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture),
+            ScopeScaleMode.Ire => Math.Round(fraction * 100d,
+                                             MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture),
+            _ => Math.Round(fraction * 100d,
+                            MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture) + "%",
+        };
+    }
+}
+
 /// <summary>
 /// A waveform: for each COLUMN of the picture, how its samples are distributed from black to white.
 ///
@@ -132,7 +159,17 @@ public sealed class WaveformView : Control
         set => SetValue(ShowScaleLabelsProperty, value);
     }
 
-    static WaveformView() => AffectsRender<WaveformView>(DataProperty, ShowScaleLabelsProperty);
+    public static readonly StyledProperty<ScopeScaleMode> ScaleModeProperty =
+        AvaloniaProperty.Register<WaveformView, ScopeScaleMode>(nameof(ScaleMode), ScopeScaleMode.TenBit);
+
+    public ScopeScaleMode ScaleMode
+    {
+        get => GetValue(ScaleModeProperty);
+        set => SetValue(ScaleModeProperty, value);
+    }
+
+    static WaveformView() =>
+        AffectsRender<WaveformView>(DataProperty, ShowScaleLabelsProperty, ScaleModeProperty);
 
     private WriteableBitmap? _bitmap;
     private int _bitmapColumns, _bitmapLevels;
@@ -161,26 +198,30 @@ public sealed class WaveformView : Control
             ctx.DrawImage(bitmap, new Rect(0, 0, bitmap.PixelSize.Width, bitmap.PixelSize.Height),
                           plot);
 
-        // The quarters of the range, as a ruler behind nothing: a waveform is read against levels,
-        // and without them "how high is that sky" has no answer.
+        // Keep the compact panel at quarters. The enlarged 10-bit ruler gets eighths so the
+        // familiar 0, 128 … 896, 1023 video-code scale can be read without estimating.
         var grid = new Pen(new SolidColorBrush(Color.FromArgb(70, 120, 126, 134)), 1);
-        for (int q = 1; q < 4; q++)
+        int divisions = ShowScaleLabels ? ScopeScale.Divisions(ScaleMode) : 4;
+        for (int q = 1; q < divisions; q++)
         {
-            double y = plot.Y + plot.Height * q / 4d;
+            double y = plot.Y + plot.Height * q / divisions;
             ctx.DrawLine(grid, new Point(plot.X, y), new Point(plot.Right, y));
         }
-        if (ShowScaleLabels) DrawScale(ctx, plot, w, h);
+        if (ShowScaleLabels) DrawScale(ctx, plot, w, h, ScaleMode);
     }
 
-    private static void DrawScale(DrawingContext ctx, Rect plot, double w, double h)
+    private static void DrawScale(DrawingContext ctx, Rect plot, double w, double h,
+                                  ScopeScaleMode scaleMode)
     {
         var brush = new SolidColorBrush(Color.FromArgb(170, 230, 232, 235));
-        for (int q = 0; q <= 4; q++)
+        int divisions = ScopeScale.Divisions(scaleMode);
+        for (int q = 0; q <= divisions; q++)
         {
-            string text = (100 - q * 25) + "%";
+            string text = ScopeScale.Label(scaleMode, q, divisions);
             var ft = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
                                        Typeface.Default, 10, brush);
-            double y = Math.Clamp(plot.Y + plot.Height * q / 4d - ft.Height / 2d, 0, plot.Bottom - ft.Height);
+            double y = Math.Clamp(plot.Y + plot.Height * q / divisions - ft.Height / 2d,
+                                  0, plot.Bottom - ft.Height);
             ctx.DrawText(ft, new Point(Math.Max(1, plot.X - ft.Width - 4), y));
         }
         foreach ((double x, string text) in new[] { (plot.X, "0"), (plot.X + plot.Width / 2d, "50"), (plot.Right, "100%") })

@@ -10,21 +10,37 @@
         Background="{DynamicResource BgBrush}"
         Title="{i18n:T '示波器'}">
     <Grid RowDefinitions="Auto,*" Margin="14">
-        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center"
-                    Spacing="6" Margin="0,0,0,10">
-            <ToggleButton Padding="12,5" IsChecked="{Binding ShowHistogram, Mode=TwoWay}">
-                <TextBlock Text="{i18n:T '直方图'}" />
-            </ToggleButton>
-            <ToggleButton Padding="12,5" IsChecked="{Binding ShowWaveform, Mode=TwoWay}">
-                <TextBlock Text="{i18n:T '波形'}" />
-            </ToggleButton>
-            <ToggleButton Padding="12,5" IsChecked="{Binding ShowRgbParade, Mode=TwoWay}">
-                <TextBlock Text="{i18n:T 'YRGB 分量'}" />
-            </ToggleButton>
-            <ToggleButton Padding="12,5" IsChecked="{Binding ShowVectorscope, Mode=TwoWay}">
-                <TextBlock Text="{i18n:T '矢量图'}" />
-            </ToggleButton>
-        </StackPanel>
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6">
+                <ToggleButton Padding="12,5" IsChecked="{Binding ShowHistogram, Mode=TwoWay}">
+                    <TextBlock Text="{i18n:T '直方图'}" />
+                </ToggleButton>
+                <ToggleButton Padding="12,5" IsChecked="{Binding ShowWaveform, Mode=TwoWay}">
+                    <TextBlock Text="{i18n:T '波形'}" />
+                </ToggleButton>
+                <ToggleButton Padding="12,5" IsChecked="{Binding ShowRgbParade, Mode=TwoWay}">
+                    <TextBlock Text="{i18n:T 'YRGB 分量'}" />
+                </ToggleButton>
+                <ToggleButton Padding="12,5" IsChecked="{Binding ShowVectorscope, Mode=TwoWay}">
+                    <TextBlock Text="{i18n:T '矢量图'}" />
+                </ToggleButton>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                        VerticalAlignment="Center" IsVisible="{Binding ShowsSignalScaleControls}"
+                        ToolTip.Tip="{i18n:T '纵轴刻度只改变示波器坐标显示，不改变图像数据。'}">
+                <TextBlock Text="{i18n:T '纵轴'}" FontSize="11" VerticalAlignment="Center" Margin="6,0,2,0" />
+                <ToggleButton Padding="7,4" IsChecked="{Binding ShowTenBitScopeScale, Mode=TwoWay}">
+                    <TextBlock Text="0–1023" FontSize="11" />
+                </ToggleButton>
+                <ToggleButton Padding="7,4" IsChecked="{Binding ShowIreScopeScale, Mode=TwoWay}">
+                    <TextBlock Text="IRE" FontSize="11" />
+                </ToggleButton>
+                <ToggleButton Padding="7,4" IsChecked="{Binding ShowPercentScopeScale, Mode=TwoWay}">
+                    <TextBlock Text="%" FontSize="11" />
+                </ToggleButton>
+            </StackPanel>
+        </Grid>
 
         <Border Grid.Row="1" Background="#15171A" BorderBrush="{DynamicResource BorderSoftBrush}"
                 BorderThickness="1" CornerRadius="4" ClipToBounds="True">
@@ -33,10 +49,10 @@
                                    DisplayHeadroom="{Binding DisplayHdrHeadroom}"
                                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                 <ctl:WaveformView Data="{Binding Waveform}" IsVisible="{Binding ShowWaveform}"
-                                  ShowScaleLabels="True"
+                                  ShowScaleLabels="True" ScaleMode="{Binding ScopeScale}"
                                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                 <ctl:RgbParadeView Data="{Binding Waveform}" IsVisible="{Binding ShowRgbParade}"
-                                   ShowScaleLabels="True"
+                                   ShowScaleLabels="True" ScaleMode="{Binding ScopeScale}"
                                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                 <ctl:VectorscopeView Data="{Binding Vectorscope}" IsVisible="{Binding ShowVectorscope}"
                                      ShowScaleLabels="True"

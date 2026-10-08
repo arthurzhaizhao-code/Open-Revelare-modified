@@ -806,6 +806,8 @@
   "示波器": "Scopes",
   "肤色线": "Skin tone",
   "放大当前示波器": "Enlarge current scope",
+  "纵轴": "Scale",
+  "纵轴刻度只改变示波器坐标显示，不改变图像数据。": "The vertical scale changes only the scope labels; it does not change image data.",
   "直方图：各亮度上有多少像素。判断有没有溢出。": "Histogram: how many pixels sit at each level. For whether anything is clipped.",
   "波形：同样的亮度分布，但保留横向位置。判断偏色是整幅均匀还是渐变。": "Waveform: the same distribution, with the horizontal position kept. For whether a cast is uniform or drifts across the frame.",
   "RGB 分量：三个通道横向分开并共享纵轴，便于手工对齐。": "RGB Parade: separates the three channels horizontally on one shared vertical scale for manual alignment.",

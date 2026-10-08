@@ -1412,6 +1412,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>The diagnostic occupying the single scope slot. Scope data is computed only for
     /// the selected view; every view inspects the final rendered positive.</summary>
     [ObservableProperty] private ScopeDisplayMode _scopeMode;
+    [ObservableProperty] private ScopeScaleMode _scopeScale = ScopeScaleMode.TenBit;
     [ObservableProperty] private WaveformData? _waveform;
     [ObservableProperty] private VectorscopeData? _vectorscope;
 
@@ -1439,6 +1440,27 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         set { if (value) ScopeMode = ScopeDisplayMode.Vectorscope; }
     }
 
+    public bool ShowTenBitScopeScale
+    {
+        get => ScopeScale == ScopeScaleMode.TenBit;
+        set { if (value) ScopeScale = ScopeScaleMode.TenBit; }
+    }
+
+    public bool ShowPercentScopeScale
+    {
+        get => ScopeScale == ScopeScaleMode.Percent;
+        set { if (value) ScopeScale = ScopeScaleMode.Percent; }
+    }
+
+    public bool ShowIreScopeScale
+    {
+        get => ScopeScale == ScopeScaleMode.Ire;
+        set { if (value) ScopeScale = ScopeScaleMode.Ire; }
+    }
+
+    public bool ShowsSignalScaleControls =>
+        ScopeMode is ScopeDisplayMode.Waveform or ScopeDisplayMode.RgbParade;
+
     private bool ShowsWaveformData =>
         ScopeMode is ScopeDisplayMode.Waveform or ScopeDisplayMode.RgbParade;
     private bool ShowsVectorscopeData => ScopeMode == ScopeDisplayMode.Vectorscope;
@@ -1465,8 +1487,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(ShowWaveform));
             OnPropertyChanged(nameof(ShowRgbParade));
             OnPropertyChanged(nameof(ShowVectorscope));
+            OnPropertyChanged(nameof(ShowsSignalScaleControls));
             InvalidatePresentation();
         });
+    }
+
+    partial void OnScopeScaleChanged(ScopeScaleMode value)
+    {
+        OnPropertyChanged(nameof(ShowTenBitScopeScale));
+        OnPropertyChanged(nameof(ShowPercentScopeScale));
+        OnPropertyChanged(nameof(ShowIreScopeScale));
     }
 
     partial void OnClipShadowPercentChanged(double value) => ApplyClipThresholds();
