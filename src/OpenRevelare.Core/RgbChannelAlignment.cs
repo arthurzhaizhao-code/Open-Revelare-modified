@@ -29,10 +29,10 @@ public static class RgbChannelAlignment
         if (shift.Length != 3 || gain.Length != 3)
             throw new ArgumentException("RGB alignment requires three shifts and three gains", nameof(cal));
 
-        bool active = false;
-        for (int c = 0; c < 3; c++)
-            active |= Math.Abs(shift[c]) > 1e-12 || Math.Abs(gain[c] - 1.0) > 1e-12;
-        if (!active) return;
+        bool active0 = Math.Abs(shift[0]) > 1e-12 || Math.Abs(gain[0] - 1.0) > 1e-12;
+        bool active1 = Math.Abs(shift[1]) > 1e-12 || Math.Abs(gain[1] - 1.0) > 1e-12;
+        bool active2 = Math.Abs(shift[2]) > 1e-12 || Math.Abs(gain[2] - 1.0) > 1e-12;
+        if (!active0 && !active1 && !active2) return;
 
         float s0 = (float)(shift[0] / CodeScale), s1 = (float)(shift[1] / CodeScale), s2 = (float)(shift[2] / CodeScale);
         float g0 = (float)gain[0], g1 = (float)gain[1], g2 = (float)gain[2];
@@ -40,14 +40,20 @@ public static class RgbChannelAlignment
         {
             for (int i = from; i < to; i += 3)
             {
-                data[i] = BlackCodeNormalised + (data[i] - BlackCodeNormalised) * g0 + s0;
-                data[i + 1] = BlackCodeNormalised + (data[i + 1] - BlackCodeNormalised) * g1 + s1;
-                data[i + 2] = BlackCodeNormalised + (data[i + 2] - BlackCodeNormalised) * g2 + s2;
-                if (clampToUnit)
+                if (active0)
                 {
-                    data[i] = Math.Clamp(data[i], 0.0f, 1.0f);
-                    data[i + 1] = Math.Clamp(data[i + 1], 0.0f, 1.0f);
-                    data[i + 2] = Math.Clamp(data[i + 2], 0.0f, 1.0f);
+                    data[i] = BlackCodeNormalised + (data[i] - BlackCodeNormalised) * g0 + s0;
+                    if (clampToUnit) data[i] = Math.Clamp(data[i], 0.0f, 1.0f);
+                }
+                if (active1)
+                {
+                    data[i + 1] = BlackCodeNormalised + (data[i + 1] - BlackCodeNormalised) * g1 + s1;
+                    if (clampToUnit) data[i + 1] = Math.Clamp(data[i + 1], 0.0f, 1.0f);
+                }
+                if (active2)
+                {
+                    data[i + 2] = BlackCodeNormalised + (data[i + 2] - BlackCodeNormalised) * g2 + s2;
+                    if (clampToUnit) data[i + 2] = Math.Clamp(data[i + 2], 0.0f, 1.0f);
                 }
             }
         });
