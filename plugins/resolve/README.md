@@ -32,8 +32,9 @@ analysis, Dmin lock, density endpoints, independent gain and Shift, numeric ROI,
 calibration error reporting. No per-render auto-analysis or file access.
 
 Neutral-grey calibration adds a genuine third point without moving Dmin or Dmax. Select a
-known neutral patch with the yellow viewer box, then press Sample neutral grey. Enable
-"Show and drag sample box" and drag directly in the Resolve viewer to reposition it. By default the common
+known neutral patch with the yellow viewer marker, then press Sample neutral grey. Enable
+"Click or drag sample point" and click directly in the Resolve viewer to reposition it; dragging moves
+the marker, while Sample size controls the sampled area. By default the common
 level is the mean of the three readings, so an ordinary neutral object changes colour without
 claiming a reflectance. Enable Known grey card only for a measured card; 470 is the standard
 18% grey target. The plugin reports the three current sample codes and solves
