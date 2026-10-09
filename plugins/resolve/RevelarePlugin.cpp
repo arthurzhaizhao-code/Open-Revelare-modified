@@ -4,7 +4,9 @@
 #include "ofxMessage.h"
 #include "CalibrationAbi.h"
 #include "LogTransform.h"
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <dlfcn.h>
@@ -13,6 +15,9 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#define GL_SILENCE_DEPRECATION
+#include <OpenGL/gl.h>
 
 namespace {
 OfxHost* host = nullptr;
@@ -37,9 +42,11 @@ void notify(OfxImageEffectHandle effect, const std::string& s) {
 struct Instance {
     OfxImageClipHandle source{}, output{};
     OfxParamSetHandle set{};
-    OfxParamHandle enabled{}, lock{}, status{}, neutralStatus{}, neutralTarget{}, neutralAbsolute{};
+    OfxParamHandle enabled{}, lock{}, status{}, neutralStatus{}, neutralTarget{}, neutralAbsolute{}, neutralOverlay{};
     std::array<OfxParamHandle, 3> dmin{}, dmax{}, slope{}, shift{}, gamma{};
     std::array<OfxParamHandle, 4> roi{}, neutralRoi{};
+    bool neutralDragging=false,neutralDragMoved=false;
+    double neutralDragX=0.0,neutralDragY=0.0;
 };
 OfxParamHandle parameter(OfxParamSetHandle set, const char* name) {
     OfxParamHandle p{}; check(params->paramGetHandle(set, name, &p, nullptr)); return p;
@@ -144,6 +151,7 @@ void defineNumber(OfxParamSetHandle set,const char* name,const char* label,doubl
     props->propSetDouble(p,kOfxParamPropIncrement,0,increment);
     props->propSetInt(p,kOfxParamPropDigits,0,digits);
 }
+OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandle in,OfxPropertySetHandle out);
 OfxStatus describe(OfxImageEffectHandle effect) {
     OfxPropertySetHandle p{}; check(effects->getPropertySet(effect,&p));
     check(props->propSetString(p,kOfxPropLabel,0,"Revelare Negative (Prototype)"));
@@ -153,6 +161,9 @@ OfxStatus describe(OfxImageEffectHandle effect) {
     check(props->propSetInt(p,kOfxImageEffectPropSupportsTiles,0,0));
     check(props->propSetInt(p,kOfxImageEffectPropTemporalClipAccess,0,0));
     check(props->propSetString(p,kOfxImageEffectPluginRenderThreadSafety,0,kOfxImageEffectRenderFullySafe));
+    // Resolve supports the standard OpenFX viewer overlay. It gives the neutral
+    // sampler a visible, draggable region instead of four blind numeric fields.
+    check(props->propSetPointer(p,kOfxImageEffectPluginPropOverlayInteractV1,0,reinterpret_cast<void*>(overlayEntry)));
     return kOfxStatOK;
 }
 OfxStatus describeContext(OfxImageEffectHandle effect) {
@@ -180,13 +191,16 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
     const double roiDefault[]={0.05,0.05,0.90,0.90};
     for(int c=0;c<4;c++) defineNumber(set,roiNames[c],roiNames[c],roiDefault[c],0.0,1.0);
     define(set,kOfxParamTypePushButton,"sampleNeutral","中性灰取样 / Sample neutral grey");
+    p=define(set,kOfxParamTypeBoolean,"neutralOverlay","显示并拖动取样框 / Show and drag sample box");
+    check(props->propSetInt(p,kOfxParamPropDefault,0,1));
+    props->propSetString(p,kOfxParamPropHint,0,"Drag in the Resolve viewer to define the neutral patch, then press Sample neutral grey.");
     p=define(set,kOfxParamTypeBoolean,"neutralAbsolute","已知灰卡：放到目标码值 / Known grey card: map to target");
     check(props->propSetInt(p,kOfxParamPropDefault,0,0));
     defineNumber(set,"neutralTarget","灰点 Cineon 码值 / Grey target code",470.0,96.0,1031.0,1.0,0);
     const double neutralDefault[]={0.40,0.40,0.20,0.20};
     for(int c=0;c<4;c++) defineNumber(set,neutralRoiNames[c],neutralRoiNames[c],neutralDefault[c],0.0,1.0);
     p=define(set,kOfxParamTypeString,"neutralStatus","中性灰读数 / Neutral reading");
-    check(props->propSetString(p,kOfxParamPropDefault,0,"No neutral patch sampled. Select a genuinely neutral patch, not a parade extreme."));
+    check(props->propSetString(p,kOfxParamPropDefault,0,"Drag the yellow box over a genuinely neutral patch, then sample."));
     props->propSetInt(p,kOfxParamPropEnabled,0,0);
     p=define(set,kOfxParamTypeString,"analysisStatus","标定状态 / Analysis status");
     check(props->propSetString(p,kOfxParamPropDefault,0,"Not calibrated. Linear input required; primaries are preserved."));
@@ -199,7 +213,7 @@ OfxStatus create(OfxImageEffectHandle effect) {
     check(effects->clipGetHandle(effect,kOfxImageEffectOutputClipName,&i->output,nullptr));
     check(effects->getParamSet(effect,&i->set));
     i->enabled=parameter(i->set,"enabled"); i->lock=parameter(i->set,"lockBase"); i->status=parameter(i->set,"analysisStatus");
-    i->neutralStatus=parameter(i->set,"neutralStatus");i->neutralTarget=parameter(i->set,"neutralTarget");i->neutralAbsolute=parameter(i->set,"neutralAbsolute");
+    i->neutralStatus=parameter(i->set,"neutralStatus");i->neutralTarget=parameter(i->set,"neutralTarget");i->neutralAbsolute=parameter(i->set,"neutralAbsolute");i->neutralOverlay=parameter(i->set,"neutralOverlay");
     for(int c=0;c<3;c++) {i->dmin[c]=parameter(i->set,minNames[c]);i->dmax[c]=parameter(i->set,maxNames[c]);i->slope[c]=parameter(i->set,gainNames[c]);i->shift[c]=parameter(i->set,shiftNames[c]);i->gamma[c]=parameter(i->set,gammaNames[c]);}
     for(int c=0;c<4;c++){i->roi[c]=parameter(i->set,roiNames[c]);i->neutralRoi[c]=parameter(i->set,neutralRoiNames[c]);}
     OfxPropertySetHandle p{}; check(effects->getPropertySet(effect,&p));
@@ -351,9 +365,82 @@ void sampleNeutral(OfxImageEffectHandle effect,Instance& i,double time) {
         params->paramEditEnd(i.set);throw;
     }
     char text[512];std::snprintf(text,sizeof(text),
-        "Before R %.1f / G %.1f / B %.1f -> %s %.1f; midtone gamma R %.4f / G %.4f / B %.4f. Dmin and Dmax unchanged.",
+        "Current sample R %.1f / G %.1f / B %.1f -> %s %.1f; midtone gamma R %.4f / G %.4f / B %.4f. Dmin and Dmax unchanged.",
         before[0],before[1],before[2],absolute?"card target":"preserved level",target,solved[0],solved[1],solved[2]);
     check(params->paramSetValue(i.neutralStatus,text));
+    check(params->paramSetValue(i.status,"Neutral correction applied. The yellow box is the sampled area; Dmin and Dmax remain locked."));
+}
+
+bool interactContext(OfxPropertySetHandle in,OfxImageEffectHandle& effect,Instance*& i,double& time) {
+    void* raw=nullptr;
+    if(!in || props->propGetPointer(in,kOfxPropEffectInstance,0,&raw)!=kOfxStatOK || !raw)return false;
+    effect=reinterpret_cast<OfxImageEffectHandle>(raw);
+    try { i=instance(effect); }
+    catch(...) { return false; }
+    time=0.0; props->propGetDouble(in,kOfxPropTime,0,&time);
+    return true;
+}
+bool neutralPoint(OfxImageEffectHandle effect,double time,OfxPropertySetHandle in,double& nx,double& ny) {
+    double pen[2]{};
+    if(props->propGetDoubleN(in,kOfxInteractPropPenPosition,2,pen)!=kOfxStatOK)return false;
+    OfxRectD rod{};
+    if(effects->clipGetRegionOfDefinition(instance(effect)->source,time,&rod)!=kOfxStatOK)return false;
+    const double width=rod.x2-rod.x1,height=rod.y2-rod.y1;
+    if(!(width>0.0&&height>0.0))return false;
+    nx=std::clamp((pen[0]-rod.x1)/width,0.0,1.0);
+    ny=std::clamp((pen[1]-rod.y1)/height,0.0,1.0);
+    return true;
+}
+void setNeutralDragBox(Instance& i,double x,double y) {
+    double left=std::min(i.neutralDragX,x),bottom=std::min(i.neutralDragY,y);
+    double width=std::abs(x-i.neutralDragX),height=std::abs(y-i.neutralDragY);
+    if(width<0.002||height<0.002)return;
+    i.neutralDragMoved=true;
+    params->paramSetValue(i.neutralRoi[0],left);params->paramSetValue(i.neutralRoi[1],bottom);
+    params->paramSetValue(i.neutralRoi[2],width);params->paramSetValue(i.neutralRoi[3],height);
+}
+OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandle in,OfxPropertySetHandle) {
+    try {
+        if(std::strcmp(action,kOfxActionDescribeInteract)==0) {
+            auto descriptor=reinterpret_cast<OfxPropertySetHandle>(const_cast<void*>(handle));
+            check(props->propSetString(descriptor,kOfxInteractPropSlaveToParam,0,"neutralOverlay"));
+            for(int n=0;n<4;n++)check(props->propSetString(descriptor,kOfxInteractPropSlaveToParam,n+1,neutralRoiNames[n]));
+            return kOfxStatOK;
+        }
+        if(std::strcmp(action,kOfxActionCreateInstanceInteract)==0 || std::strcmp(action,kOfxActionDestroyInstanceInteract)==0)
+            return kOfxStatOK;
+        OfxImageEffectHandle effect{};Instance* i=nullptr;double time=0.0;
+        if(!interactContext(in,effect,i,time) || !integer(i->neutralOverlay,time))return kOfxStatReplyDefault;
+        if(std::strcmp(action,kOfxInteractActionDraw)==0) {
+            OfxRectD rod{};if(effects->clipGetRegionOfDefinition(i->source,time,&rod)!=kOfxStatOK)return kOfxStatReplyDefault;
+            double r[4];for(int n=0;n<4;n++)r[n]=number(i->neutralRoi[n],time);
+            const double x0=rod.x1+r[0]*(rod.x2-rod.x1),y0=rod.y1+r[1]*(rod.y2-rod.y1);
+            const double x1=x0+r[2]*(rod.x2-rod.x1),y1=y0+r[3]*(rod.y2-rod.y1);
+            glPushAttrib(GL_CURRENT_BIT|GL_ENABLE_BIT|GL_LINE_BIT);
+            glDisable(GL_DEPTH_TEST);glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+            glColor4f(1.f,.78f,.08f,.15f);glBegin(GL_QUADS);glVertex2d(x0,y0);glVertex2d(x1,y0);glVertex2d(x1,y1);glVertex2d(x0,y1);glEnd();
+            glLineWidth(2.f);glColor4f(1.f,.82f,.12f,1.f);glBegin(GL_LINE_LOOP);glVertex2d(x0,y0);glVertex2d(x1,y0);glVertex2d(x1,y1);glVertex2d(x0,y1);glEnd();
+            glBegin(GL_LINES);glVertex2d((x0+x1)*.5,y0);glVertex2d((x0+x1)*.5,y1);glVertex2d(x0,(y0+y1)*.5);glVertex2d(x1,(y0+y1)*.5);glEnd();
+            glPopAttrib();return kOfxStatOK;
+        }
+        double x=0.0,y=0.0;
+        if(std::strcmp(action,kOfxInteractActionPenDown)==0) {
+            if(!neutralPoint(effect,time,in,x,y))return kOfxStatReplyDefault;
+            i->neutralDragX=x;i->neutralDragY=y;i->neutralDragging=true;i->neutralDragMoved=false;
+            check(params->paramEditBegin(i->set,"Select neutral sample"));return kOfxStatOK;
+        }
+        if(std::strcmp(action,kOfxInteractActionPenMotion)==0 && i->neutralDragging) {
+            if(neutralPoint(effect,time,in,x,y))setNeutralDragBox(*i,x,y);
+            return kOfxStatOK;
+        }
+        if(std::strcmp(action,kOfxInteractActionPenUp)==0 && i->neutralDragging) {
+            if(neutralPoint(effect,time,in,x,y))setNeutralDragBox(*i,x,y);
+            i->neutralDragging=false;check(params->paramEditEnd(i->set));
+            if(i->neutralDragMoved)params->paramSetValue(i->neutralStatus,"Sample box updated. Press Sample neutral grey to apply correction.");
+            return kOfxStatOK;
+        }
+        return kOfxStatReplyDefault;
+    } catch(...) { return kOfxStatReplyDefault; }
 }
 OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
     auto& i=*instance(effect);

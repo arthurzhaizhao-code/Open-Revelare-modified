@@ -7,9 +7,9 @@ SDK="$(xcrun --show-sdk-path)"
 FLAGS=(-std=c++17 -Wall -Wextra -Werror -O2 -isysroot "$SDK" -isystem "$SDK/usr/include/c++/v1" -I"$ROOT/plugins/resolve/include")
 BUNDLE="$OUT/RevelareNegative.ofx.bundle"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
-clang++ "${FLAGS[@]}" -fvisibility=hidden -bundle "$ROOT/plugins/resolve/RevelarePlugin.cpp" -o "$BUNDLE/Contents/MacOS/RevelareNegative.ofx"
+clang++ "${FLAGS[@]}" -fvisibility=hidden -bundle "$ROOT/plugins/resolve/RevelarePlugin.cpp" -framework OpenGL -o "$BUNDLE/Contents/MacOS/RevelareNegative.ofx"
 clang++ "${FLAGS[@]}" "$ROOT/plugins/resolve/tests/NativeSmoke.cpp" -o "$OUT/native-smoke"
-clang++ "${FLAGS[@]}" "$ROOT/plugins/resolve/tests/HostEditRegression.cpp" -o "$OUT/host-edit-test"
+clang++ "${FLAGS[@]}" "$ROOT/plugins/resolve/tests/HostEditRegression.cpp" -framework OpenGL -o "$OUT/host-edit-test"
 "$OUT/host-edit-test"
 "$OUT/native-smoke"
 RID=osx-arm64
@@ -27,7 +27,7 @@ cat > "$BUNDLE/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>Revelare Negative</string>
 <key>CFBundleExecutable</key><string>RevelareNegative.ofx</string>
 <key>CFBundlePackageType</key><string>BNDL</string>
-<key>CFBundleVersion</key><string>0.1.4</string>
+<key>CFBundleVersion</key><string>0.1.5</string>
 </dict></plist>
 PLIST
 codesign --force --sign - "$BUNDLE/Contents/MacOS/OpenRevelare.Calibration.Native.dylib"
@@ -44,6 +44,6 @@ ditto "$BUNDLE" "$PKGROOT/Library/OFX/Plugins/RevelareNegative.ofx.bundle"
 pkgbuild \
   --root "$PKGROOT" \
   --identifier org.openrevelare.negative.pkg \
-  --version 0.1.4 \
+  --version 0.1.5 \
   --install-location / \
   "$OUT/RevelareNegative-$RID.pkg"

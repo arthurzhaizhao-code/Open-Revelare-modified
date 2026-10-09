@@ -32,10 +32,11 @@ analysis, Dmin lock, density endpoints, independent gain and Shift, numeric ROI,
 calibration error reporting. No per-render auto-analysis or file access.
 
 Neutral-grey calibration adds a genuine third point without moving Dmin or Dmax. Select a
-known neutral patch with the neutral ROI, then press Sample neutral grey. By default the common
+known neutral patch with the yellow viewer box, then press Sample neutral grey. Enable
+"Show and drag sample box" and drag directly in the Resolve viewer to reposition it. By default the common
 level is the mean of the three readings, so an ordinary neutral object changes colour without
 claiming a reflectance. Enable Known grey card only for a measured card; 470 is the standard
-18% grey target. The plugin reports the three codes before correction and solves
+18% grey target. The plugin reports the three current sample codes and solves
 one bounded midtone gamma per channel. Gamma is applied between the endpoints and extended
 linearly outside them, so black, white, sub-black and super-white remain finite. A random parade
 extreme is not a neutral reference; use a grey card or an object whose neutrality is known.
