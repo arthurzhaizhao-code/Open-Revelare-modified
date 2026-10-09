@@ -336,8 +336,13 @@ void analyze(OfxImageEffectHandle effect,Instance& i,double time) {
         params->paramEditEnd(i.set);throw;
     }
     check(params->paramEditEnd(i.set));updateLock(i,time);updateEndpointControls(i,time);
-    std::string status=result[7]?"Calibrated (fallback). Dmin locked; inspect Log scopes.":
-        "Calibrated. Dmin locked. Highlight confidence: "+std::to_string(result[6]);
+    int flags=static_cast<int>(std::llround(result[7]));
+    int baseEvidence=(flags>>2)&3;
+    const char* baseText=baseEvidence==1?"film-base mode":
+        baseEvidence==2?"edge film base":baseEvidence==3?"content inference":"unknown base source";
+    const char* highlightText=(flags&2)?"stable single-frame highlight":
+        (flags&1)?"legacy highlight fallback":"roll highlight consensus";
+    std::string status="Calibrated. Dmin locked. Dmin: "+baseText+"; Dmax: "+highlightText+".";
     params->paramSetValue(i.status,status.c_str());
 }
 void sampleNeutral(OfxImageEffectHandle effect,Instance& i,double time) {

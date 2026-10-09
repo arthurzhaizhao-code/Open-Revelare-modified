@@ -11,7 +11,7 @@ public static unsafe class Exports
     public static int Abi() => 1;
 
     /// <summary>RGB float32 packed input; ROI in pixel coordinates, origin matches the buffer.
-    /// Output: 3 Dmin, 3 Dmax, highlight confidence (-1 for fallback), fallback flag.
+    /// Output: 3 Dmin, 3 Dmax, highlight confidence, diagnostic flags.
     /// Buffers remain caller owned. Result is written only on success. No exception crosses ABI.</summary>
     [UnmanagedCallersOnly(EntryPoint = "or_analyze_single", CallConvs = [typeof(CallConvCdecl)])]
     public static int Analyze(float* rgb, int width, int height,
@@ -46,7 +46,12 @@ public static unsafe class Exports
                 result[c + 3] = candidate.DMax[c];
             }
             result[6] = candidate.HighlightDiagnostics?.Confidence ?? -1;
-            result[7] = candidate.UsedHighlightFallback ? 1 : 0;
+            // bit 0: legacy highlight fallback; bit 1: stable single-frame highlight;
+            // bits 2-3: Dmin evidence (1=mode, 2=edge sliver, 3=content inference).
+            int flags = candidate.UsedHighlightFallback ? 1 : 0;
+            if (stableSingleFrameHighlight) flags |= 2;
+            if (candidate.BaseEvidence is { } evidence) flags |= ((int)evidence + 1) << 2;
+            result[7] = flags;
             if (error != null && errorCapacity > 0) error[0] = 0;
             return 0;
         }
