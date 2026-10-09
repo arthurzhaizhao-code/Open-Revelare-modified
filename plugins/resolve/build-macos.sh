@@ -27,7 +27,7 @@ cat > "$BUNDLE/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>Revelare Negative</string>
 <key>CFBundleExecutable</key><string>RevelareNegative.ofx</string>
 <key>CFBundlePackageType</key><string>BNDL</string>
-<key>CFBundleVersion</key><string>0.1.2</string>
+<key>CFBundleVersion</key><string>0.1.3</string>
 </dict></plist>
 PLIST
 codesign --force --sign - "$BUNDLE/Contents/MacOS/OpenRevelare.Calibration.Native.dylib"

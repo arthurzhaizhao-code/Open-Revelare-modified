@@ -19,6 +19,11 @@ int main(int argc, char** argv) {
         assert(std::abs(revelare::logChannel(base,lo[c],hi[c],2)-95.f/1023)<1e-6);
         assert(std::abs(revelare::logChannel(top,lo[c],hi[c],1)-1032.f/1023)<1e-6);
         assert(revelare::logChannel(top,lo[c],hi[c],1)>1); // preserve superwhite
+        assert(std::abs(revelare::logChannel(base,lo[c],hi[c],1,0,1.8)-95.f/1023)<1e-6);
+        assert(std::abs(revelare::logChannel(top,lo[c],hi[c],1,0,1.8)-1032.f/1023)<1e-6);
+        float middle=static_cast<float>(std::pow(10.,-(lo[c]+hi[c])*.5));
+        assert(revelare::logChannel(middle,lo[c],hi[c],1,0,1.8)
+               < revelare::logChannel(middle,lo[c],hi[c],1,0,1.0));
     }
     float transmission[3]={.02f,.03f,.04f},before[3],after[3];
     for(int c=0;c<3;c++)before[c]=revelare::logChannel(transmission[c],lo[c],hi[c],gain[c]);
