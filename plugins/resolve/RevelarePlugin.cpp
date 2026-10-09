@@ -342,7 +342,8 @@ void analyze(OfxImageEffectHandle effect,Instance& i,double time) {
         baseEvidence==2?"edge film base":baseEvidence==3?"content inference":"unknown base source";
     const char* highlightText=(flags&2)?"stable single-frame highlight":
         (flags&1)?"legacy highlight fallback":"roll highlight consensus";
-    std::string status="Calibrated. Dmin locked. Dmin: "+baseText+"; Dmax: "+highlightText+".";
+    std::string status=std::string("Calibrated. Dmin locked. Dmin: ")+baseText+
+        "; Dmax: "+highlightText+".";
     params->paramSetValue(i.status,status.c_str());
 }
 void sampleNeutral(OfxImageEffectHandle effect,Instance& i,double time) {
