@@ -74,6 +74,24 @@ public class CalibrationEngineTests
     }
 
     [Fact]
+    public void ExplicitPictureRoiCanKeepDarkSceneContent()
+    {
+        var original = Image(77);
+        var input = Convert(original);
+        double[] dmin = [0.05, 0.17, 0.29];
+        var tb = dmin.Select(v => Math.Pow(10, -v)).ToArray();
+        var expected = FilmBase.DetectDMaxPerChannelFromRollDetailed([original], tb, 90,
+            [original], null, protectIndependentChannelExtrema: true, excludeDarkValley: false);
+        Assert.NotNull(expected);
+
+        var result = Engine.Analyze([new Frame(input, input)], dmin,
+            excludeDarkValley: false);
+
+        Assert.Equal(expected!.Density.Select((v, c) => v + dmin[c]).ToArray(), result.DMax);
+        Assert.Equal(dmin, result.DMin);
+    }
+
+    [Fact]
     public void MissingHighlightFailsWithoutChangingLockedBase()
     {
         var b = new Buffer(100, 100); // opaque, no resolvable picture

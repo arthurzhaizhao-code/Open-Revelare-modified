@@ -33,7 +33,13 @@ public static unsafe class Exports
                 Array.Copy(data, ((row + y) * width + x) * 3,
                     picture.Data, row * roiWidth * 3, roiWidth * 3);
             double[]? dmin = lockedDmin == null ? null : [lockedDmin[0], lockedDmin[1], lockedDmin[2]];
-            var candidate = CalibrationEngine.Analyze([new CalibrationFrame(full, picture)], dmin);
+            // The OFX picture buffer is already an explicit user-controlled ROI with a second
+            // edge inset inside the endpoint detector.  Treating its darkest histogram valley
+            // as an opaque mask card can delete real subject matter (hair, clothing, furniture)
+            // and collapse Dmax onto Dmin, producing an all-white render.  The standalone app's
+            // full-frame/roll path keeps that mask; this bounded OFX ROI deliberately does not.
+            var candidate = CalibrationEngine.Analyze([new CalibrationFrame(full, picture)], dmin,
+                excludeDarkValley: false);
             for (int c = 0; c < 3; c++)
             {
                 result[c] = candidate.DMin[c];

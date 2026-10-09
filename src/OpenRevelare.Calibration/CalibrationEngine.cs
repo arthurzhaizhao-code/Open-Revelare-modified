@@ -20,7 +20,8 @@ public static class CalibrationEngine
     /// Cancellation is checked between estimators; their existing inner loops are unchanged.</summary>
     public static CalibrationResult Analyze(IReadOnlyList<CalibrationFrame> frames,
         double[]? lockedDMin = null, double? boardThreshold = null,
-        bool allowNeutralCarrier = false, CancellationToken cancellationToken = default)
+        bool allowNeutralCarrier = false, bool excludeDarkValley = true,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(frames);
         if (frames.Count == 0) throw new ArgumentException("No analysis frames.", nameof(frames));
@@ -90,7 +91,8 @@ public static class CalibrationEngine
         var images = frames.Select(f => f.Picture).ToArray();
         var masks = frames.Select(f => f.PictureMask ?? f.Picture).ToArray();
         var highlight = FilmBase.DetectDMaxPerChannelFromRollDetailed(
-            images, tbase, 90.0, masks, boardThreshold, protectIndependentChannelExtrema: true);
+            images, tbase, 90.0, masks, boardThreshold, protectIndependentChannelExtrema: true,
+            excludeDarkValley: excludeDarkValley);
         cancellationToken.ThrowIfCancellationRequested();
         var span = highlight?.Density ?? FilmBase.AutoWbHighFromRoll(
             masks, tbase, boardThreshold, images);

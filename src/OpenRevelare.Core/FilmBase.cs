@@ -587,10 +587,11 @@ public static class FilmBase
     public static double[]? DetectDMaxPerChannelFromRoll(
         IReadOnlyList<ImageBuffer> images, double[] tBase, double rollPercentile = 90.0,
         IReadOnlyList<ImageBuffer>? masks = null, double? sprocketThreshold = null,
-        double edgeInset = 0.05, bool protectIndependentChannelExtrema = true)
+        double edgeInset = 0.05, bool protectIndependentChannelExtrema = true,
+        bool excludeDarkValley = true)
         => DetectDMaxPerChannelFromRollDetailed(
             images, tBase, rollPercentile, masks, sprocketThreshold, edgeInset,
-            protectIndependentChannelExtrema)?.Density;
+            protectIndependentChannelExtrema, excludeDarkValley)?.Density;
 
     /// <summary>
     /// Detailed form of <see cref="DetectDMaxPerChannelFromRoll"/>. The endpoint remains a
@@ -604,7 +605,8 @@ public static class FilmBase
     public static HighlightEndpointEstimate? DetectDMaxPerChannelFromRollDetailed(
         IReadOnlyList<ImageBuffer> images, double[] tBase, double rollPercentile = 90.0,
         IReadOnlyList<ImageBuffer>? masks = null, double? sprocketThreshold = null,
-        double edgeInset = 0.05, bool protectIndependentChannelExtrema = true)
+        double edgeInset = 0.05, bool protectIndependentChannelExtrema = true,
+        bool excludeDarkValley = true)
     {
         var perFrame = new List<double[]>();
         var candidateWeights = new List<double>();
@@ -646,7 +648,7 @@ public static class FilmBase
                 }
             }
 
-            bool[] keep = HighDensityKeepMask(mask, sprocketThreshold);
+            bool[] keep = HighDensityKeepMask(mask, sprocketThreshold, excludeDarkValley);
 
             int n = img.PixelCount;
 
@@ -1473,7 +1475,8 @@ public static class FilmBase
     /// </summary>
     private static double SourceStep(ImageBuffer img) => img.SourceQuantisationStep;
 
-    public static bool[] HighDensityKeepMask(ImageBuffer maskFrame, double? sprocketThreshold)
+    public static bool[] HighDensityKeepMask(ImageBuffer maskFrame, double? sprocketThreshold,
+                                             bool excludeDarkValley = true)
     {
         int w = maskFrame.Width, h = maskFrame.Height, n = w * h;
         var keep = new bool[n];
@@ -1512,9 +1515,12 @@ public static class FilmBase
 
         // Dark end: the opaque mask card / edge line — exactly the thing that would otherwise
         // set the endpoint. <= 0 is the "no mask present" sentinel.
-        double darkValley = Sprocket.EstimateDarkValley(maskFrame);
-        if (darkValley > 0.0)
-            for (int p = 0; p < n; p++) if (!(luma[p] > darkValley)) keep[p] = false;
+        if (excludeDarkValley)
+        {
+            double darkValley = Sprocket.EstimateDarkValley(maskFrame);
+            if (darkValley > 0.0)
+                for (int p = 0; p < n; p++) if (!(luma[p] > darkValley)) keep[p] = false;
+        }
 
         // Never hand back an empty selection — an all-masked frame should fall back to measuring
         // everything rather than silently dropping out of the roll statistics.
