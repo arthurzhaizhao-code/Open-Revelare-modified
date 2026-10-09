@@ -50,12 +50,12 @@ int main() {
     effect.abort=[](OfxImageEffectHandle)->int{return 0;};
     parameterSuite.paramGetValueAtTime=getValue;parameterSuite.paramSetValue=setValue;
     message.message=hostMessage;
-    Value enabled,locked,status,lo[3],hi[3],gain[3];enabled.integer=1;
+    Value enabled,locked,status,lo[3],hi[3],gain[3],shift[3];enabled.integer=1;
     state.enabled=reinterpret_cast<OfxParamHandle>(&enabled);state.lock=reinterpret_cast<OfxParamHandle>(&locked);state.status=reinterpret_cast<OfxParamHandle>(&status);
     state.source=reinterpret_cast<OfxImageClipHandle>(&inputTag);state.output=reinterpret_cast<OfxImageClipHandle>(&outputTag);
     for(int c=0;c<3;c++){
         lo[c].number=.1427703952;hi[c].number=.1907345347;gain[c].number=1;
-        state.dmin[c]=reinterpret_cast<OfxParamHandle>(&lo[c]);state.dmax[c]=reinterpret_cast<OfxParamHandle>(&hi[c]);state.slope[c]=reinterpret_cast<OfxParamHandle>(&gain[c]);
+        state.dmin[c]=reinterpret_cast<OfxParamHandle>(&lo[c]);state.dmax[c]=reinterpret_cast<OfxParamHandle>(&hi[c]);state.slope[c]=reinterpret_cast<OfxParamHandle>(&gain[c]);state.shift[c]=reinterpret_cast<OfxParamHandle>(&shift[c]);
     }
     auto handle=reinterpret_cast<OfxImageEffectHandle>(&effectTag);auto args=reinterpret_cast<OfxPropertySetHandle>(&renderTag);
     assert(entry(kOfxImageEffectActionRender,handle,args,nullptr)==kOfxStatOK);

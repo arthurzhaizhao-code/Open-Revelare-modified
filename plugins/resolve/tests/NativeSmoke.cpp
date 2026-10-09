@@ -25,6 +25,8 @@ int main(int argc, char** argv) {
     gain[0]=1.2;
     for(int c=0;c<3;c++)after[c]=revelare::logChannel(transmission[c],lo[c],hi[c],gain[c]);
     assert(before[0]!=after[0]);assert(before[1]==after[1]);assert(before[2]==after[2]);
+    const float shifted=revelare::logChannel(transmission[1],lo[1],hi[1],gain[1],10.0);
+    assert(std::abs((shifted-after[1])-10.f/1023.f)<1e-6);
     gain[0]=0;assert(!revelare::validEndpoints(lo,hi,gain));
     if(argc==1){std::cout<<"Log transform tests passed\n";return 0;}
     assert(argc==3);

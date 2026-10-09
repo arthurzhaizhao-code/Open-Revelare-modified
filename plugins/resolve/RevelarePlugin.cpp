@@ -22,6 +22,7 @@ const OfxMessageSuiteV1* messages = nullptr;
 const char* minNames[] = {"dminR", "dminG", "dminB"};
 const char* maxNames[] = {"dmaxR", "dmaxG", "dmaxB"};
 const char* gainNames[] = {"slopeR", "slopeG", "slopeB"};
+const char* shiftNames[] = {"shiftR", "shiftG", "shiftB"};
 const char* roiNames[] = {"roiLeft", "roiBottom", "roiWidth", "roiHeight"};
 void check(OfxStatus s) { if (s != kOfxStatOK) throw std::runtime_error("OFX host call failed: " + std::to_string(s)); }
 std::string stringProp(OfxPropertySetHandle p, const char* name) {
@@ -34,7 +35,7 @@ struct Instance {
     OfxImageClipHandle source{}, output{};
     OfxParamSetHandle set{};
     OfxParamHandle enabled{}, lock{}, status{};
-    std::array<OfxParamHandle, 3> dmin{}, dmax{}, slope{};
+    std::array<OfxParamHandle, 3> dmin{}, dmax{}, slope{}, shift{};
     std::array<OfxParamHandle, 4> roi{};
 };
 OfxParamHandle parameter(OfxParamSetHandle set, const char* name) {
@@ -69,9 +70,9 @@ void updateEndpointControls(Instance& i, double time) {
     }
 }
 void validateStatus(Instance& i, double time) {
-    double lo[3],hi[3],gain[3];
-    for(int c=0;c<3;c++){lo[c]=number(i.dmin[c],time);hi[c]=number(i.dmax[c],time);gain[c]=number(i.slope[c],time);}
-    if(!revelare::validEndpoints(lo,hi,gain))
+    double lo[3],hi[3],gain[3],shift[3];
+    for(int c=0;c<3;c++){lo[c]=number(i.dmin[c],time);hi[c]=number(i.dmax[c],time);gain[c]=number(i.slope[c],time);shift[c]=number(i.shift[c],time);}
+    if(!revelare::validEndpoints(lo,hi,gain,shift))
         params->paramSetValue(i.status,"Invalid endpoints: inversion bypassed. Dmax must exceed Dmin; re-analyze or correct Dmax.");
     else params->paramSetValue(i.status,"Endpoints valid. Manual adjustment; Dmin lock is unchanged.");
 }
@@ -129,15 +130,16 @@ OfxPropertySetHandle define(OfxParamSetHandle set,const char* type,const char* n
     if(std::strcmp(type,kOfxParamTypePushButton)!=0) props->propSetInt(p,kOfxParamPropAnimates,0,0);
     return p;
 }
-void defineNumber(OfxParamSetHandle set,const char* name,const char* label,double value,double lo,double hi) {
+void defineNumber(OfxParamSetHandle set,const char* name,const char* label,double value,double lo,double hi,
+                  double increment=0.001,int digits=4) {
     auto p=define(set,kOfxParamTypeDouble,name,label);
     check(props->propSetDouble(p,kOfxParamPropDefault,0,value));
     check(props->propSetDouble(p,kOfxParamPropMin,0,lo));
     check(props->propSetDouble(p,kOfxParamPropMax,0,hi));
     check(props->propSetDouble(p,kOfxParamPropDisplayMin,0,lo));
     check(props->propSetDouble(p,kOfxParamPropDisplayMax,0,hi));
-    props->propSetDouble(p,kOfxParamPropIncrement,0,0.001);
-    props->propSetInt(p,kOfxParamPropDigits,0,4);
+    props->propSetDouble(p,kOfxParamPropIncrement,0,increment);
+    props->propSetInt(p,kOfxParamPropDigits,0,digits);
 }
 OfxStatus describe(OfxImageEffectHandle effect) {
     OfxPropertySetHandle p{}; check(effects->getPropertySet(effect,&p));
@@ -168,8 +170,9 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
         defineNumber(set,minNames[c],minNames[c],0.0,-4.0,4.0);
         defineNumber(set,maxNames[c],maxNames[c],2.0,-3.9,8.0);
         defineNumber(set,gainNames[c],gainNames[c],1.0,0.25,4.0);
+        defineNumber(set,shiftNames[c],shiftNames[c],0.0,-256.0,256.0,1.0,1);
     }
-    define(set,kOfxParamTypePushButton,"resetTrim","重置通道伸缩 / Reset slopes");
+    define(set,kOfxParamTypePushButton,"resetTrim","重置通道调整 / Reset gain + shift");
     const double roiDefault[]={0.05,0.05,0.90,0.90};
     for(int c=0;c<4;c++) defineNumber(set,roiNames[c],roiNames[c],roiDefault[c],0.0,1.0);
     p=define(set,kOfxParamTypeString,"analysisStatus","标定状态 / Analysis status");
@@ -183,7 +186,7 @@ OfxStatus create(OfxImageEffectHandle effect) {
     check(effects->clipGetHandle(effect,kOfxImageEffectOutputClipName,&i->output,nullptr));
     check(effects->getParamSet(effect,&i->set));
     i->enabled=parameter(i->set,"enabled"); i->lock=parameter(i->set,"lockBase"); i->status=parameter(i->set,"analysisStatus");
-    for(int c=0;c<3;c++) {i->dmin[c]=parameter(i->set,minNames[c]);i->dmax[c]=parameter(i->set,maxNames[c]);i->slope[c]=parameter(i->set,gainNames[c]);}
+    for(int c=0;c<3;c++) {i->dmin[c]=parameter(i->set,minNames[c]);i->dmax[c]=parameter(i->set,maxNames[c]);i->slope[c]=parameter(i->set,gainNames[c]);i->shift[c]=parameter(i->set,shiftNames[c]);}
     for(int c=0;c<4;c++) i->roi[c]=parameter(i->set,roiNames[c]);
     OfxPropertySetHandle p{}; check(effects->getPropertySet(effect,&p));
     updateLock(*i,0); updateEndpointControls(*i,0);
@@ -195,10 +198,10 @@ OfxStatus render(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
     check(props->propGetDouble(in,kOfxPropTime,0,&time));
     check(props->propGetIntN(in,kOfxImageEffectPropRenderWindow,4,window));
     bool enabled=integer(i.enabled,time)!=0;
-    double lo[3],hi[3],gain[3];
-    for(int c=0;c<3;c++){lo[c]=number(i.dmin[c],time);hi[c]=number(i.dmax[c],time);gain[c]=number(i.slope[c],time);}
+    double lo[3],hi[3],gain[3],shift[3];
+    for(int c=0;c<3;c++){lo[c]=number(i.dmin[c],time);hi[c]=number(i.dmax[c],time);gain[c]=number(i.slope[c],time);shift[c]=number(i.shift[c],time);}
     // Invalid/intermediate edits must not fail the OFX render or flood the host with dialogs.
-    enabled=enabled&&revelare::validEndpoints(lo,hi,gain);
+    enabled=enabled&&revelare::validEndpoints(lo,hi,gain,shift);
     Image src(i.source,time),dst(i.output,time);
     for(int y=window[1];y<window[3];y++) {
         if(effects->abort(effect)) return kOfxStatOK;
@@ -208,7 +211,7 @@ OfxStatus render(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
             float alpha=src.channels==4?s[3]:1.f;
             for(int c=0;c<3;c++) {
                 float v=src.premult ? (alpha>0?s[c]/alpha:0.f) : s[c];
-                if(enabled) v=revelare::logChannel(v,lo[c],hi[c],gain[c]);
+                if(enabled) v=revelare::logChannel(v,lo[c],hi[c],gain[c],shift[c]);
                 d[c]=dst.premult?v*alpha:v;
             }
             if(dst.channels==4)d[3]=alpha;
@@ -248,8 +251,8 @@ void analyze(OfxImageEffectHandle effect,Instance& i,double time) {
         throw std::runtime_error("ROI must fit inside [0,1].");
     int x=static_cast<int>(r[0]*aw),y=static_cast<int>(r[1]*ah);
     int rw=std::min(aw-x,static_cast<int>(r[2]*aw)),rh=std::min(ah-y,static_cast<int>(r[3]*ah));
-    double oldMin[3],oldMax[3],oldSlope[3];
-    for(int c=0;c<3;c++){oldMin[c]=number(i.dmin[c],time);oldMax[c]=number(i.dmax[c],time);oldSlope[c]=number(i.slope[c],time);}
+    double oldMin[3],oldMax[3],oldSlope[3],oldShift[3];
+    for(int c=0;c<3;c++){oldMin[c]=number(i.dmin[c],time);oldMax[c]=number(i.dmax[c],time);oldSlope[c]=number(i.slope[c],time);oldShift[c]=number(i.shift[c],time);}
     int wasLocked=integer(i.lock,time),wasEnabled=integer(i.enabled,time);
     double result[8]{};char error[1024]{};
     if(fn(data.data(),aw,ah,x,y,rw,rh,wasLocked?oldMin:nullptr,result,error,sizeof(error)))
@@ -261,10 +264,11 @@ void analyze(OfxImageEffectHandle effect,Instance& i,double time) {
             if(!wasLocked)check(params->paramSetValue(i.dmin[c],result[c]));
             check(params->paramSetValue(i.dmax[c],result[c+3]));
             check(params->paramSetValue(i.slope[c],1.0));
+            check(params->paramSetValue(i.shift[c],0.0));
         }
         check(params->paramSetValue(i.lock,1));check(params->paramSetValue(i.enabled,1));
     } catch(...) {
-        for(int c=0;c<3;c++){params->paramSetValue(i.dmin[c],oldMin[c]);params->paramSetValue(i.dmax[c],oldMax[c]);params->paramSetValue(i.slope[c],oldSlope[c]);}
+        for(int c=0;c<3;c++){params->paramSetValue(i.dmin[c],oldMin[c]);params->paramSetValue(i.dmax[c],oldMax[c]);params->paramSetValue(i.slope[c],oldSlope[c]);params->paramSetValue(i.shift[c],oldShift[c]);}
         params->paramSetValue(i.lock,wasLocked);params->paramSetValue(i.enabled,wasEnabled);
         params->paramEditEnd(i.set);throw;
     }
@@ -279,8 +283,9 @@ OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
     auto name=stringProp(in,kOfxPropName);double time;check(props->propGetDouble(in,kOfxPropTime,0,&time));
     if(name=="lockBase"){updateLock(i,time);return kOfxStatOK;}
     if(name=="resetTrim" && userEdited) {
-        check(params->paramEditBegin(i.set,"Reset slopes"));
+        check(params->paramEditBegin(i.set,"Reset gain and shift"));
         for(auto p:i.slope)params->paramSetValue(p,1.0);
+        for(auto p:i.shift)params->paramSetValue(p,0.0);
         check(params->paramEditEnd(i.set));return kOfxStatOK;
     }
     if(name=="analyze" && userEdited) {
@@ -291,7 +296,7 @@ OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
     }
     for(int c=0;c<3;c++) {
         if(name==minNames[c]) {updateEndpointControls(i,time);validateStatus(i,time);return kOfxStatOK;}
-        if(name==maxNames[c] || name==gainNames[c] || name=="enabled") {
+        if(name==maxNames[c] || name==gainNames[c] || name==shiftNames[c] || name=="enabled") {
             validateStatus(i,time);return kOfxStatOK;
         }
     }
@@ -319,7 +324,7 @@ OfxStatus entry(const char* action,const void* handle,OfxPropertySetHandle in,Of
       catch(...) {return kOfxStatFailed;}
 }
 void setHost(OfxHost* h){host=h;}
-OfxPlugin plugin={kOfxImageEffectPluginApi,1,"org.openrevelare.negative.prototype",0,1,setHost,entry};
+OfxPlugin plugin={kOfxImageEffectPluginApi,1,"org.openrevelare.negative.prototype",0,2,setHost,entry};
 }
 extern "C" __attribute__((visibility("default"))) int OfxGetNumberOfPlugins(){return 1;}
 extern "C" __attribute__((visibility("default"))) OfxPlugin* OfxGetPlugin(int index){return index==0?&plugin:nullptr;}
