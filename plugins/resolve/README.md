@@ -57,15 +57,17 @@ Resolve 21.1.1 SDK (OpenFX-1.4/include); original BSD-3-Clause notices are retai
 with the accompanying SDK license in include/LICENSE. Plugin and calibration code
 are distributed under the repository GPL-3.0; preserve upstream attribution.
 
-CI produces RevelareNegative-osx-arm64.zip on macos-latest. The script also supports
+CI produces RevelareNegative-osx-arm64.zip and a double-click `.pkg` on macos-latest. The script also supports
 an Intel host but this workflow does not validate Intel. The bundle contains the
 OFX and its NativeAOT dylib. Ad-hoc signed, not notarized. Does not require a .NET
 runtime installation on the user's machine.
 
 ## Install and inspect
 
-After saving work and quitting Resolve, copy RevelareNegative.ofx.bundle to
-/Library/OFX/Plugins and reopen Resolve. Find “Revelare Negative (Prototype)” under
+After saving work and quitting Resolve, either open the generated `.pkg`, or copy
+RevelareNegative.ofx.bundle to /Library/OFX/Plugins manually, then reopen Resolve. The package
+is not Developer ID signed or notarized; if macOS blocks it, use Privacy & Security → Open
+Anyway. Find “Revelare Negative (Prototype)” under
 “Film Negative”. Use a duplicate grade/version for inspection. Installing alone
 does not change the existing project. No script here quits Resolve, edits the
 user's grade, or installs system-wide automatically.

@@ -35,3 +35,15 @@ codesign --force --sign - "$BUNDLE"
 codesign --verify --deep --strict "$BUNDLE"
 "$OUT/native-smoke" "$BUNDLE/Contents/MacOS/OpenRevelare.Calibration.Native.dylib" "$BUNDLE/Contents/MacOS/RevelareNegative.ofx"
 ditto -c -k --sequesterRsrc --keepParent "$BUNDLE" "$OUT/RevelareNegative-$RID.zip"
+
+# Double-click installer. Installer owns upgrades at the stable OFX bundle path,
+# so no destructive preinstall script is needed.
+PKGROOT="$OUT/pkgroot"
+mkdir -p "$PKGROOT/Library/OFX/Plugins"
+ditto "$BUNDLE" "$PKGROOT/Library/OFX/Plugins/RevelareNegative.ofx.bundle"
+pkgbuild \
+  --root "$PKGROOT" \
+  --identifier org.openrevelare.negative.pkg \
+  --version 0.1.3 \
+  --install-location / \
+  "$OUT/RevelareNegative-$RID.pkg"

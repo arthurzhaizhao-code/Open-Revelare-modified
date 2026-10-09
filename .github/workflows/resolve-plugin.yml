@@ -22,5 +22,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: RevelareNegative-macos-prototype
-          path: ${{ runner.temp }}/revelare-plugin/RevelareNegative-*.zip
+          path: |
+            ${{ runner.temp }}/revelare-plugin/RevelareNegative-*.zip
+            ${{ runner.temp }}/revelare-plugin/RevelareNegative-*.pkg
           if-no-files-found: error
