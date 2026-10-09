@@ -19,6 +19,8 @@ int main(int argc, char** argv) {
         assert(std::abs(revelare::logChannel(base,lo[c],hi[c],2)-95.f/1023)<1e-6);
         assert(std::abs(revelare::logChannel(top,lo[c],hi[c],1)-1032.f/1023)<1e-6);
         assert(revelare::logChannel(top,lo[c],hi[c],1)>1); // preserve superwhite
+        assert(std::abs(revelare::logChannel(top,lo[c],hi[c],1,0,1,685)-685.f/1023)<1e-6);
+        assert(std::abs(revelare::logChannel(base,lo[c],hi[c],1,0,1,685)-95.f/1023)<1e-6);
         assert(std::abs(revelare::logChannel(base,lo[c],hi[c],1,0,1.8)-95.f/1023)<1e-6);
         assert(std::abs(revelare::logChannel(top,lo[c],hi[c],1,0,1.8)-1032.f/1023)<1e-6);
         float middle=static_cast<float>(std::pow(10.,-(lo[c]+hi[c])*.5));

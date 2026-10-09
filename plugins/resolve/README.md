@@ -6,6 +6,11 @@ conversion is included. In the user's existing Rec.2020/Cineon → ARRI LogC3 CS
 chain, the upstream linear input must actually be Rec.2020. This plugin does not
 infer that from project settings.
 
+For Resolve interoperability, automatic Dmax is placed at Cineon code 685 by default.
+This leaves 685–1023 as highlight headroom for a downstream Cineon display transform or
+film-look LUT instead of expanding the detected picture range to full scale first. The
+"Cineon white placement" control can be raised toward 1032 for an extended-range workflow.
+
 This prototype replaces the Nami node. It does NOT stack on top of Nami inversion.
 Enable inversion defaults off. Analyze frame takes the current upstream image,
 box downsamples to at most 1024 per edge, and calls the existing OpenRevelare
@@ -16,14 +21,14 @@ endpoints. Results live in ordinary persistent, nonanimated OFX parameters.
 
 Each gain stretches that channel about its fixed Dmin. Each Shift then moves the
 complete output channel in 10-bit code values without changing the stored Dmin.
-These are not the raw Nami parameter values. Output is unclamped (the upstream
-white endpoint is code 1032 before Shift).
+These are not the raw Nami parameter values. Output is unclamped; the measured Dmax lands
+at the selected Cineon white placement before Shift.
 Inspect channel independence BEFORE downstream CST/LUT. Final Rec.709 may mix RGB.
 
 ROI controls are normalized left, bottom, width, height. They restrict highlight
 analysis, NOT output geometry; base analysis retains the whole input to find film
-edges. Coordinates use OFX bottom-left origin. There is no drag rectangle overlay
-yet. Input to automatic analysis must be finite, nonnegative and opaque; place it
+edges. Coordinates use OFX bottom-left origin. The yellow viewer marker sets the neutral
+sample point. Input to automatic analysis must be finite, nonnegative and opaque; place it
 before alpha-generating geometry effects. Source quantisation is unknown (0).
 The existing detector also uses its default 5% inset inside the selected ROI.
 

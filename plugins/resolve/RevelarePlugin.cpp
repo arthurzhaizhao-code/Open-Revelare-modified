@@ -42,7 +42,7 @@ void notify(OfxImageEffectHandle effect, const std::string& s) {
 struct Instance {
     OfxImageClipHandle source{}, output{};
     OfxParamSetHandle set{};
-    OfxParamHandle enabled{}, lock{}, status{}, neutralStatus{}, neutralTarget{}, neutralAbsolute{}, neutralOverlay{}, neutralSize{};
+    OfxParamHandle enabled{}, lock{}, status{}, neutralStatus{}, neutralTarget{}, neutralAbsolute{}, neutralOverlay{}, neutralSize{}, whiteCode{};
     std::array<OfxParamHandle, 3> dmin{}, dmax{}, slope{}, shift{}, gamma{};
     std::array<OfxParamHandle, 4> roi{}, neutralRoi{};
     bool neutralDragging=false,neutralDragMoved=false;
@@ -187,6 +187,7 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
         defineNumber(set,shiftNames[c],shiftNames[c],0.0,-256.0,256.0,1.0,1);
         defineNumber(set,gammaNames[c],gammaNames[c],1.0,0.20,5.0,0.001,4);
     }
+    defineNumber(set,"whiteCode","Dmax 输出码值 / Cineon white placement",685.0,685.0,1032.0,1.0,0);
     define(set,kOfxParamTypePushButton,"resetTrim","重置通道调整 / Reset gain + shift + midtone");
     const double roiDefault[]={0.05,0.05,0.90,0.90};
     for(int c=0;c<4;c++) defineNumber(set,roiNames[c],roiNames[c],roiDefault[c],0.0,1.0);
@@ -217,7 +218,7 @@ OfxStatus create(OfxImageEffectHandle effect) {
     check(effects->clipGetHandle(effect,kOfxImageEffectOutputClipName,&i->output,nullptr));
     check(effects->getParamSet(effect,&i->set));
     i->enabled=parameter(i->set,"enabled"); i->lock=parameter(i->set,"lockBase"); i->status=parameter(i->set,"analysisStatus");
-    i->neutralStatus=parameter(i->set,"neutralStatus");i->neutralTarget=parameter(i->set,"neutralTarget");i->neutralAbsolute=parameter(i->set,"neutralAbsolute");i->neutralOverlay=parameter(i->set,"neutralOverlay");i->neutralSize=parameter(i->set,"neutralSize");
+    i->neutralStatus=parameter(i->set,"neutralStatus");i->neutralTarget=parameter(i->set,"neutralTarget");i->neutralAbsolute=parameter(i->set,"neutralAbsolute");i->neutralOverlay=parameter(i->set,"neutralOverlay");i->neutralSize=parameter(i->set,"neutralSize");i->whiteCode=parameter(i->set,"whiteCode");
     for(int c=0;c<3;c++) {i->dmin[c]=parameter(i->set,minNames[c]);i->dmax[c]=parameter(i->set,maxNames[c]);i->slope[c]=parameter(i->set,gainNames[c]);i->shift[c]=parameter(i->set,shiftNames[c]);i->gamma[c]=parameter(i->set,gammaNames[c]);}
     for(int c=0;c<4;c++){i->roi[c]=parameter(i->set,roiNames[c]);i->neutralRoi[c]=parameter(i->set,neutralRoiNames[c]);}
     // Repair the oversized drag region produced by the first overlay prototype.
@@ -240,6 +241,7 @@ OfxStatus render(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
     check(props->propGetDouble(in,kOfxPropTime,0,&time));
     check(props->propGetIntN(in,kOfxImageEffectPropRenderWindow,4,window));
     bool enabled=integer(i.enabled,time)!=0;
+    const double whiteCode=number(i.whiteCode,time);
     double lo[3],hi[3],gain[3],shift[3],gamma[3];
     for(int c=0;c<3;c++){lo[c]=number(i.dmin[c],time);hi[c]=number(i.dmax[c],time);gain[c]=number(i.slope[c],time);shift[c]=number(i.shift[c],time);gamma[c]=number(i.gamma[c],time);}
     // Invalid/intermediate edits must not fail the OFX render or flood the host with dialogs.
@@ -253,7 +255,7 @@ OfxStatus render(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
             float alpha=src.channels==4?s[3]:1.f;
             for(int c=0;c<3;c++) {
                 float v=src.premult ? (alpha>0?s[c]/alpha:0.f) : s[c];
-                if(enabled) v=revelare::logChannel(v,lo[c],hi[c],gain[c],shift[c],gamma[c]);
+                if(enabled) v=revelare::logChannel(v,lo[c],hi[c],gain[c],shift[c],gamma[c],whiteCode);
                 d[c]=dst.premult?v*alpha:v;
             }
             if(dst.channels==4)d[3]=alpha;
@@ -350,11 +352,13 @@ void sampleNeutral(OfxImageEffectHandle effect,Instance& i,double time) {
     if(!count)throw std::runtime_error("Neutral ROI contains no pixels.");
     for(double& v:density)v/=static_cast<double>(count);
     double target=number(i.neutralTarget,time),before[3],solved[3],oldGamma[3];
+    const double codeSpan=number(i.whiteCode,time)-95.0;
+    if(!(codeSpan>0.0))throw std::runtime_error("Cineon white placement must exceed code 95.");
     for(int c=0;c<3;c++) {
         double lo=number(i.dmin[c],time),hi=number(i.dmax[c],time);
         double slope=number(i.slope[c],time),shift=number(i.shift[c],time);
         double position=(density[c]-lo)/(hi-lo);
-        before[c]=95.0+shift+937.0*slope*revelare::midtoneCurve(position,number(i.gamma[c],time));
+        before[c]=95.0+shift+codeSpan*slope*revelare::midtoneCurve(position,number(i.gamma[c],time));
         oldGamma[c]=number(i.gamma[c],time);
     }
     const bool absolute=integer(i.neutralAbsolute,time)!=0;
@@ -363,7 +367,7 @@ void sampleNeutral(OfxImageEffectHandle effect,Instance& i,double time) {
         double lo=number(i.dmin[c],time),hi=number(i.dmax[c],time);
         double slope=number(i.slope[c],time),shift=number(i.shift[c],time);
         double position=(density[c]-lo)/(hi-lo);
-        double desired=(target-95.0-shift)/(937.0*slope);
+        double desired=(target-95.0-shift)/(codeSpan*slope);
         if(!(position>0.0&&position<1.0)||!(desired>0.0&&desired<1.0))
             throw std::runtime_error("Neutral patch must lie strictly between the calibrated Dmin and Dmax in every channel.");
         solved[c]=std::log(desired)/std::log(position);
@@ -379,8 +383,8 @@ void sampleNeutral(OfxImageEffectHandle effect,Instance& i,double time) {
         params->paramEditEnd(i.set);throw;
     }
     char text[512];std::snprintf(text,sizeof(text),
-        "Current sample R %.1f / G %.1f / B %.1f -> %s %.1f; midtone gamma R %.4f / G %.4f / B %.4f. Dmin and Dmax unchanged.",
-        before[0],before[1],before[2],absolute?"card target":"preserved level",target,solved[0],solved[1],solved[2]);
+        "Current sample R %.1f / G %.1f / B %.1f -> %s %.1f; midtone gamma R %.4f / G %.4f / B %.4f. Dmin/Dmax unchanged; white code %.0f.",
+        before[0],before[1],before[2],absolute?"card target":"preserved level",target,solved[0],solved[1],solved[2],number(i.whiteCode,time));
     check(params->paramSetValue(i.neutralStatus,text));
     check(params->paramSetValue(i.status,"Neutral correction applied. The yellow marker is the sampled area; Dmin and Dmax remain locked."));
 }
@@ -495,7 +499,7 @@ OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
     }
     for(int c=0;c<3;c++) {
         if(name==minNames[c]) {updateEndpointControls(i,time);validateStatus(i,time);return kOfxStatOK;}
-        if(name==maxNames[c] || name==gainNames[c] || name==shiftNames[c] || name==gammaNames[c] || name=="enabled") {
+        if(name==maxNames[c] || name==gainNames[c] || name==shiftNames[c] || name==gammaNames[c] || name=="enabled" || name=="whiteCode") {
             validateStatus(i,time);return kOfxStatOK;
         }
     }

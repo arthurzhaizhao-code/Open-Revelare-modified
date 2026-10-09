@@ -50,9 +50,10 @@ int main() {
     effect.abort=[](OfxImageEffectHandle)->int{return 0;};
     parameterSuite.paramGetValueAtTime=getValue;parameterSuite.paramSetValue=setValue;
     message.message=hostMessage;
-    Value enabled,locked,status,neutralStatus,target,lo[3],hi[3],gain[3],shift[3],gamma[3];enabled.integer=1;target.number=470;
+    Value enabled,locked,status,neutralStatus,target,whiteCode,lo[3],hi[3],gain[3],shift[3],gamma[3];enabled.integer=1;target.number=470;whiteCode.number=685;
     state.enabled=reinterpret_cast<OfxParamHandle>(&enabled);state.lock=reinterpret_cast<OfxParamHandle>(&locked);state.status=reinterpret_cast<OfxParamHandle>(&status);
     state.neutralStatus=reinterpret_cast<OfxParamHandle>(&neutralStatus);state.neutralTarget=reinterpret_cast<OfxParamHandle>(&target);
+    state.whiteCode=reinterpret_cast<OfxParamHandle>(&whiteCode);
     state.source=reinterpret_cast<OfxImageClipHandle>(&inputTag);state.output=reinterpret_cast<OfxImageClipHandle>(&outputTag);
     for(int c=0;c<3;c++){
         lo[c].number=.1427703952;hi[c].number=.1907345347;gain[c].number=1;gamma[c].number=1;

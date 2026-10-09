@@ -15,11 +15,12 @@ inline double midtoneCurve(double x, double gamma) {
     return std::pow(x, gamma);
 }
 inline float logChannel(float transmission, double dmin, double dmax, double slope,
-                        double shiftCode = 0.0, double midtoneGamma = 1.0) {
+                        double shiftCode = 0.0, double midtoneGamma = 1.0,
+                        double whiteCode = 1032.0) {
     const double density = -std::log10(std::max(static_cast<double>(transmission), 1e-4));
     const double position = (density - dmin) / (dmax - dmin);
     return static_cast<float>((95.0 + shiftCode
-        + 937.0 * slope * midtoneCurve(position, midtoneGamma)) / 1023.0);
+        + (whiteCode - 95.0) * slope * midtoneCurve(position, midtoneGamma)) / 1023.0);
 }
 inline bool validEndpoints(const double* dmin, const double* dmax, const double* slope,
                            const double* shiftCode = nullptr, const double* midtoneGamma = nullptr) {
