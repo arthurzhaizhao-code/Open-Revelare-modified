@@ -49,7 +49,7 @@ public static unsafe class Exports
             // bit 0: legacy highlight fallback; bit 1: stable single-frame highlight;
             // bits 2-3: Dmin evidence (1=mode, 2=edge sliver, 3=content inference).
             int flags = candidate.UsedHighlightFallback ? 1 : 0;
-            if (stableSingleFrameHighlight) flags |= 2;
+            flags |= 2; // this ABI entry point is the bounded single-frame Resolve path
             if (candidate.BaseEvidence is { } evidence) flags |= ((int)evidence + 1) << 2;
             result[7] = flags;
             if (error != null && errorCapacity > 0) error[0] = 0;
