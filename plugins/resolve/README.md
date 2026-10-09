@@ -6,7 +6,10 @@ conversion is included. In the user's existing Rec.2020/Cineon → ARRI LogC3 CS
 chain, the upstream linear input must actually be Rec.2020. This plugin does not
 infer that from project settings.
 
-For Resolve interoperability, automatic Dmax is placed at Cineon code 685 by default.
+For Resolve interoperability, automatic Dmax is placed at Cineon code 685 by default. Use
+**Diffuse white 685** when the sampled endpoint represents paper, white clothing, or another
+diffuse white. Use **True Dmax 1000** only when the endpoint is a genuine maximum-density sample.
+The numeric Cineon placement remains available for a custom target.
 This leaves 685–1023 as highlight headroom for a downstream Cineon display transform or
 film-look LUT instead of expanding the detected picture range to full scale first. The
 "Cineon white placement" control can be raised toward 1032 for an extended-range workflow.

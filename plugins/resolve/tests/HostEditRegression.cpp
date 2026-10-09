@@ -20,8 +20,9 @@ static OfxStatus getValue(OfxParamHandle h,double time,...) {
 }
 static OfxStatus setValue(OfxParamHandle h,...) {
     va_list a;va_start(a,h);
-    assert(h==state.status);
-    reinterpret_cast<Value*>(h)->text=va_arg(a,const char*);
+    if(h==state.status) reinterpret_cast<Value*>(h)->text=va_arg(a,const char*);
+    else if(h==state.whiteCode) reinterpret_cast<Value*>(h)->number=va_arg(a,double);
+    else assert(false);
     va_end(a);return kOfxStatOK;
 }
 static OfxStatus hostMessage(void*,const char*,const char*,const char*,...) {errors++;return kOfxStatOK;}
@@ -49,6 +50,8 @@ int main() {
     effect.clipReleaseImage=[](OfxPropertySetHandle)->OfxStatus{return kOfxStatOK;};
     effect.abort=[](OfxImageEffectHandle)->int{return 0;};
     parameterSuite.paramGetValueAtTime=getValue;parameterSuite.paramSetValue=setValue;
+    parameterSuite.paramEditBegin=[](OfxParamSetHandle,const char*)->OfxStatus{return kOfxStatOK;};
+    parameterSuite.paramEditEnd=[](OfxParamSetHandle)->OfxStatus{return kOfxStatOK;};
     message.message=hostMessage;
     Value enabled,locked,status,neutralStatus,target,whiteCode,lo[3],hi[3],gain[3],shift[3],gamma[3];enabled.integer=1;target.number=470;whiteCode.number=685;
     state.enabled=reinterpret_cast<OfxParamHandle>(&enabled);state.lock=reinterpret_cast<OfxParamHandle>(&locked);state.status=reinterpret_cast<OfxParamHandle>(&status);
@@ -74,5 +77,11 @@ int main() {
     hi[0].number=.2;
     assert(entry(kOfxImageEffectActionRender,handle,args,nullptr)==kOfxStatOK);
     assert(outputPixel[0]!=inputPixel[0]);assert(errors==0);
-    std::cout<<"OFX invalid endpoint edit, bypass, recovery and no error dialogs passed\n";
+    changedName="trueDmax";
+    assert(entry(kOfxActionInstanceChanged,handle,args,nullptr)==kOfxStatOK);
+    assert(whiteCode.number==1000.0);
+    changedName="diffuseWhite";
+    assert(entry(kOfxActionInstanceChanged,handle,args,nullptr)==kOfxStatOK);
+    assert(whiteCode.number==685.0);
+    std::cout<<"OFX invalid endpoint edit, bypass, recovery, Dmax presets and no error dialogs passed\n";
 }

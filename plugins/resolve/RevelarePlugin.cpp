@@ -188,6 +188,10 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
         defineNumber(set,gammaNames[c],gammaNames[c],1.0,0.20,5.0,0.001,4);
     }
     defineNumber(set,"whiteCode","Dmax 输出码值 / Cineon white placement",685.0,685.0,1032.0,1.0,0);
+    p=define(set,kOfxParamTypePushButton,"diffuseWhite","漫反射白 685 / Diffuse white 685");
+    props->propSetString(p,kOfxParamPropHint,0,"Place a sampled diffuse white such as paper or white clothing at Cineon code 685.");
+    p=define(set,kOfxParamTypePushButton,"trueDmax","真实 Dmax 1000 / True Dmax 1000");
+    props->propSetString(p,kOfxParamPropHint,0,"Place a genuine maximum-density sample, such as a specular highlight in the positive, at Cineon code 1000.");
     define(set,kOfxParamTypePushButton,"resetTrim","重置通道调整 / Reset gain + shift + midtone");
     const double roiDefault[]={0.05,0.05,0.90,0.90};
     for(int c=0;c<4;c++) defineNumber(set,roiNames[c],roiNames[c],roiDefault[c],0.0,1.0);
@@ -485,6 +489,13 @@ OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
         for(auto p:i.shift)params->paramSetValue(p,0.0);
         for(auto p:i.gamma)params->paramSetValue(p,1.0);
         check(params->paramEditEnd(i.set));return kOfxStatOK;
+    }
+    if((name=="diffuseWhite" || name=="trueDmax") && userEdited) {
+        const double target=name=="diffuseWhite" ? 685.0 : 1000.0;
+        check(params->paramEditBegin(i.set,name=="diffuseWhite" ? "Set diffuse-white placement" : "Set true Dmax placement"));
+        check(params->paramSetValue(i.whiteCode,target));
+        check(params->paramEditEnd(i.set));
+        validateStatus(i,time);return kOfxStatOK;
     }
     if(name=="analyze" && userEdited) {
         try {analyze(effect,i,time);}
