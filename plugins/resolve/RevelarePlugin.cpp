@@ -55,6 +55,26 @@ void updateLock(Instance& i, double time) {
         check(props->propSetInt(properties,kOfxParamPropEnabled,0,!locked));
     }
 }
+// UI bounds follow the calibrated channel, rather than an unrelated global range.
+// Render still validates independently: restored projects and undo can contain old values.
+void updateEndpointControls(Instance& i, double time) {
+    for (int c=0;c<3;c++) {
+        double lo=number(i.dmin[c],time), hi=number(i.dmax[c],time);
+        if (!std::isfinite(lo) || !std::isfinite(hi)) continue;
+        double span=std::max(hi-lo,0.001);
+        OfxPropertySetHandle p{}; check(params->paramGetPropertySet(i.dmax[c],&p));
+        check(props->propSetDouble(p,kOfxParamPropMin,0,lo+0.001));
+        check(props->propSetDouble(p,kOfxParamPropDisplayMin,0,lo+std::max(0.001,span*0.5)));
+        check(props->propSetDouble(p,kOfxParamPropDisplayMax,0,lo+span*2.0));
+    }
+}
+void validateStatus(Instance& i, double time) {
+    double lo[3],hi[3],gain[3];
+    for(int c=0;c<3;c++){lo[c]=number(i.dmin[c],time);hi[c]=number(i.dmax[c],time);gain[c]=number(i.slope[c],time);}
+    if(!revelare::validEndpoints(lo,hi,gain))
+        params->paramSetValue(i.status,"Invalid endpoints: inversion bypassed. Dmax must exceed Dmin; re-analyze or correct Dmax.");
+    else params->paramSetValue(i.status,"Endpoints valid. Manual adjustment; Dmin lock is unchanged.");
+}
 struct Image {
     OfxPropertySetHandle handle{};
     char* data{}; int bounds[4]{}, rowBytes{}, channels{}; bool premult{};
@@ -166,6 +186,7 @@ OfxStatus create(OfxImageEffectHandle effect) {
     for(int c=0;c<3;c++) {i->dmin[c]=parameter(i->set,minNames[c]);i->dmax[c]=parameter(i->set,maxNames[c]);i->slope[c]=parameter(i->set,gainNames[c]);}
     for(int c=0;c<4;c++) i->roi[c]=parameter(i->set,roiNames[c]);
     OfxPropertySetHandle p{}; check(effects->getPropertySet(effect,&p));
+    updateLock(*i,0); updateEndpointControls(*i,0);
     check(props->propSetPointer(p,kOfxPropInstanceData,0,i.get()));
     i.release(); return kOfxStatOK;
 }
@@ -176,7 +197,8 @@ OfxStatus render(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
     bool enabled=integer(i.enabled,time)!=0;
     double lo[3],hi[3],gain[3];
     for(int c=0;c<3;c++){lo[c]=number(i.dmin[c],time);hi[c]=number(i.dmax[c],time);gain[c]=number(i.slope[c],time);}
-    if(enabled&&!revelare::validEndpoints(lo,hi,gain)) throw std::runtime_error("Each Dmax must exceed its Dmin.");
+    // Invalid/intermediate edits must not fail the OFX render or flood the host with dialogs.
+    enabled=enabled&&revelare::validEndpoints(lo,hi,gain);
     Image src(i.source,time),dst(i.output,time);
     for(int y=window[1];y<window[3];y++) {
         if(effects->abort(effect)) return kOfxStatOK;
@@ -246,25 +268,32 @@ void analyze(OfxImageEffectHandle effect,Instance& i,double time) {
         params->paramSetValue(i.lock,wasLocked);params->paramSetValue(i.enabled,wasEnabled);
         params->paramEditEnd(i.set);throw;
     }
-    check(params->paramEditEnd(i.set));updateLock(i,time);
+    check(params->paramEditEnd(i.set));updateLock(i,time);updateEndpointControls(i,time);
     std::string status=result[7]?"Calibrated (fallback). Dmin locked; inspect Log scopes.":
         "Calibrated. Dmin locked. Highlight confidence: "+std::to_string(result[6]);
     params->paramSetValue(i.status,status.c_str());
 }
 OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
     auto& i=*instance(effect);
-    if(stringProp(in,kOfxPropChangeReason)!=kOfxChangeUserEdited) return kOfxStatReplyDefault;
+    const bool userEdited=stringProp(in,kOfxPropChangeReason)==kOfxChangeUserEdited;
     auto name=stringProp(in,kOfxPropName);double time;check(props->propGetDouble(in,kOfxPropTime,0,&time));
     if(name=="lockBase"){updateLock(i,time);return kOfxStatOK;}
-    if(name=="resetTrim") {
+    if(name=="resetTrim" && userEdited) {
         check(params->paramEditBegin(i.set,"Reset slopes"));
         for(auto p:i.slope)params->paramSetValue(p,1.0);
         check(params->paramEditEnd(i.set));return kOfxStatOK;
     }
-    if(name=="analyze") {
+    if(name=="analyze" && userEdited) {
         try {analyze(effect,i,time);}
-        catch(const std::exception& e){params->paramSetValue(i.status,e.what());throw;}
+        catch(const std::exception& e){params->paramSetValue(i.status,e.what());}
+        // A rejected analysis leaves the existing grade intact; it is not a render failure.
         return kOfxStatOK;
+    }
+    for(int c=0;c<3;c++) {
+        if(name==minNames[c]) {updateEndpointControls(i,time);validateStatus(i,time);return kOfxStatOK;}
+        if(name==maxNames[c] || name==gainNames[c] || name=="enabled") {
+            validateStatus(i,time);return kOfxStatOK;
+        }
     }
     return kOfxStatReplyDefault;
 }

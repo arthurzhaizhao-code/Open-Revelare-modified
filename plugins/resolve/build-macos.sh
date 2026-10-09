@@ -9,6 +9,8 @@ BUNDLE="$OUT/RevelareNegative.ofx.bundle"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 clang++ "${FLAGS[@]}" -fvisibility=hidden -bundle "$ROOT/plugins/resolve/RevelarePlugin.cpp" -o "$BUNDLE/Contents/MacOS/RevelareNegative.ofx"
 clang++ "${FLAGS[@]}" "$ROOT/plugins/resolve/tests/NativeSmoke.cpp" -o "$OUT/native-smoke"
+clang++ "${FLAGS[@]}" "$ROOT/plugins/resolve/tests/HostEditRegression.cpp" -o "$OUT/host-edit-test"
+"$OUT/host-edit-test"
 "$OUT/native-smoke"
 RID=osx-arm64
 if [[ "$(uname -m)" == x86_64 ]]; then RID=osx-x64; fi
@@ -25,7 +27,7 @@ cat > "$BUNDLE/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>Revelare Negative</string>
 <key>CFBundleExecutable</key><string>RevelareNegative.ofx</string>
 <key>CFBundlePackageType</key><string>BNDL</string>
-<key>CFBundleVersion</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>0.1.1</string>
 </dict></plist>
 PLIST
 codesign --force --sign - "$BUNDLE/Contents/MacOS/OpenRevelare.Calibration.Native.dylib"
