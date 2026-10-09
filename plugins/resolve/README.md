@@ -6,13 +6,12 @@ conversion is included. In the user's existing Rec.2020/Cineon → ARRI LogC3 CS
 chain, the upstream linear input must actually be Rec.2020. This plugin does not
 infer that from project settings.
 
-For Resolve interoperability, automatic Dmax is placed at Cineon code 685 by default. Use
-**Diffuse white 685** when the sampled endpoint represents paper, white clothing, or another
-diffuse white. Use **True Dmax 1000** only when the endpoint is a genuine maximum-density sample.
-The numeric Cineon placement remains available for a custom target.
-This leaves 685–1023 as highlight headroom for a downstream Cineon display transform or
-film-look LUT instead of expanding the detected picture range to full scale first. The
-"Cineon white placement" control can be raised toward 1032 for an extended-range workflow.
+Automatic analysis estimates the negative's density endpoint, so it uses **True Dmax 1000**
+by default. Use **Diffuse white 685** only when the endpoint was deliberately sampled from a
+90% white card, paper, white clothing, or another diffuse-white reference. The numeric Cineon
+placement remains available for a custom target. Both presets can be used before or after
+analysis because they change output placement without changing the measured Dmin or Dmax.
+Existing nodes created by the short-lived 685-default build are migrated once to 1000.
 
 This prototype replaces the Nami node. It does NOT stack on top of Nami inversion.
 Enable inversion defaults off. Analyze frame takes the current upstream image,

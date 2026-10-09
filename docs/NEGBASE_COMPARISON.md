@@ -71,8 +71,8 @@ NegBase provides two explicit Dmax modes:
 The UI describes the first as the mode for a diffuse white reference such as paper or white
 clothing, and the second as the mode for actual maximum density such as a specular highlight.
 
-This validates the Resolve prototype's current default placement of measured diffuse white at
-code 685. It also shows that “true Dmax” should be a named 1000-code mode, rather than requiring
+This validates code 685 when the measured sample is known to be diffuse white. Automatic analysis
+estimates a density endpoint and therefore defaults to the named 1000-code “true Dmax” mode, rather than requiring
 the user to guess a value near the top of a 0–1023 scale.
 
 ## Mathematical comparison with RevelareNegative

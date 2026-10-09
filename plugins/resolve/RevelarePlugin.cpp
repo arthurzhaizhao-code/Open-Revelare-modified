@@ -42,7 +42,7 @@ void notify(OfxImageEffectHandle effect, const std::string& s) {
 struct Instance {
     OfxImageClipHandle source{}, output{};
     OfxParamSetHandle set{};
-    OfxParamHandle enabled{}, lock{}, status{}, neutralStatus{}, neutralTarget{}, neutralAbsolute{}, neutralOverlay{}, neutralSize{}, whiteCode{};
+    OfxParamHandle enabled{}, lock{}, status{}, neutralStatus{}, neutralTarget{}, neutralAbsolute{}, neutralOverlay{}, neutralSize{}, whiteCode{}, endpointSchema{};
     std::array<OfxParamHandle, 3> dmin{}, dmax{}, slope{}, shift{}, gamma{};
     std::array<OfxParamHandle, 4> roi{}, neutralRoi{};
     bool neutralDragging=false,neutralDragMoved=false;
@@ -187,11 +187,17 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
         defineNumber(set,shiftNames[c],shiftNames[c],0.0,-256.0,256.0,1.0,1);
         defineNumber(set,gammaNames[c],gammaNames[c],1.0,0.20,5.0,0.001,4);
     }
-    defineNumber(set,"whiteCode","Dmax 输出码值 / Cineon white placement",685.0,685.0,1032.0,1.0,0);
+    // Analyze estimates the negative's density endpoint, so its safe default is the
+    // true-Dmax placement. Code 685 is only correct when the user deliberately
+    // identifies a diffuse-white sample rather than a density endpoint.
+    defineNumber(set,"whiteCode","Dmax 输出码值 / Cineon white placement",1000.0,685.0,1032.0,1.0,0);
     p=define(set,kOfxParamTypePushButton,"diffuseWhite","漫反射白 685 / Diffuse white 685");
     props->propSetString(p,kOfxParamPropHint,0,"Place a sampled diffuse white such as paper or white clothing at Cineon code 685.");
     p=define(set,kOfxParamTypePushButton,"trueDmax","真实 Dmax 1000 / True Dmax 1000");
     props->propSetString(p,kOfxParamPropHint,0,"Place a genuine maximum-density sample, such as a specular highlight in the positive, at Cineon code 1000.");
+    p=define(set,kOfxParamTypeInteger,"endpointSchema","endpointSchema");
+    check(props->propSetInt(p,kOfxParamPropDefault,0,0));
+    check(props->propSetInt(p,kOfxParamPropSecret,0,1));
     define(set,kOfxParamTypePushButton,"resetTrim","重置通道调整 / Reset gain + shift + midtone");
     const double roiDefault[]={0.05,0.05,0.90,0.90};
     for(int c=0;c<4;c++) defineNumber(set,roiNames[c],roiNames[c],roiDefault[c],0.0,1.0);
@@ -222,9 +228,17 @@ OfxStatus create(OfxImageEffectHandle effect) {
     check(effects->clipGetHandle(effect,kOfxImageEffectOutputClipName,&i->output,nullptr));
     check(effects->getParamSet(effect,&i->set));
     i->enabled=parameter(i->set,"enabled"); i->lock=parameter(i->set,"lockBase"); i->status=parameter(i->set,"analysisStatus");
-    i->neutralStatus=parameter(i->set,"neutralStatus");i->neutralTarget=parameter(i->set,"neutralTarget");i->neutralAbsolute=parameter(i->set,"neutralAbsolute");i->neutralOverlay=parameter(i->set,"neutralOverlay");i->neutralSize=parameter(i->set,"neutralSize");i->whiteCode=parameter(i->set,"whiteCode");
+    i->neutralStatus=parameter(i->set,"neutralStatus");i->neutralTarget=parameter(i->set,"neutralTarget");i->neutralAbsolute=parameter(i->set,"neutralAbsolute");i->neutralOverlay=parameter(i->set,"neutralOverlay");i->neutralSize=parameter(i->set,"neutralSize");i->whiteCode=parameter(i->set,"whiteCode");i->endpointSchema=parameter(i->set,"endpointSchema");
     for(int c=0;c<3;c++) {i->dmin[c]=parameter(i->set,minNames[c]);i->dmax[c]=parameter(i->set,maxNames[c]);i->slope[c]=parameter(i->set,gainNames[c]);i->shift[c]=parameter(i->set,shiftNames[c]);i->gamma[c]=parameter(i->set,gammaNames[c]);}
     for(int c=0;c<4;c++){i->roi[c]=parameter(i->set,roiNames[c]);i->neutralRoi[c]=parameter(i->set,neutralRoiNames[c]);}
+    // v0 accidentally made diffuse white the default for Analyze. Repair each
+    // existing node once; after this marker is saved, an intentional 685 choice
+    // remains untouched on later opens.
+    if(integer(i->endpointSchema,0)<1) {
+        if(std::abs(number(i->whiteCode,0)-685.0)<0.5)
+            check(params->paramSetValue(i->whiteCode,1000.0));
+        check(params->paramSetValue(i->endpointSchema,1));
+    }
     // Repair the oversized drag region produced by the first overlay prototype.
     // Keep its centre so an upgraded project still points at the same subject.
     double oldWidth=number(i->neutralRoi[2],0),oldHeight=number(i->neutralRoi[3],0);
