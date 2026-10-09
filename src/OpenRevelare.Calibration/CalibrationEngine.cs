@@ -56,17 +56,28 @@ public static class CalibrationEngine
                 var f = frames[0];
                 var mask = f.BaseMask ?? f.Base;
                 var values = ReferenceEquals(mask, f.Base) ? null : f.Base;
-                var pick = FilmBase.EstimateTBaseByMode(mask, boardThreshold, values);
+                // The endpoint detector auto-estimates the light-board/sprocket cut when the
+                // caller does not provide one. Dmin must use that same cut: without it the mode
+                // estimator is disabled and the code falls through to a 99.99th-percentile
+                // picture highlight, which is systematically too bright to be film base.
+                double? baseBoardCut = boardThreshold;
+                if (baseBoardCut is null)
+                {
+                    double estimated = Sprocket.EstimateSprocketThreshold(mask);
+                    if (estimated > 0.0 && estimated < Sprocket.NoBoard)
+                        baseBoardCut = estimated;
+                }
+                var pick = FilmBase.EstimateTBaseByMode(mask, baseBoardCut, values);
                 evidence = FilmBaseEvidence.PhysicalMode;
                 if (pick is null)
                 {
                     pick = FilmBase.EstimateTBaseFromEdgeSliver(mask, values,
-                        allowNeutralCarrier, boardThreshold);
+                        allowNeutralCarrier, baseBoardCut);
                     evidence = FilmBaseEvidence.PhysicalEdgeSliver;
                 }
                 if (pick is null)
                 {
-                    pick = FilmBase.EstimateTBaseFromRoll(new[] { mask }, boardThreshold,
+                    pick = FilmBase.EstimateTBaseFromRoll(new[] { mask }, baseBoardCut,
                         values is null ? null : new[] { values });
                     evidence = FilmBaseEvidence.ContentInference;
                 }
