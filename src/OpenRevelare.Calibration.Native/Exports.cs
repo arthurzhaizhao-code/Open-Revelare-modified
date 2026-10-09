@@ -39,7 +39,7 @@ public static unsafe class Exports
             // and collapse Dmax onto Dmin, producing an all-white render.  The standalone app's
             // full-frame/roll path keeps that mask; this bounded OFX ROI deliberately does not.
             var candidate = CalibrationEngine.Analyze([new CalibrationFrame(full, picture)], dmin,
-                excludeDarkValley: false);
+                excludeDarkValley: false, stableSingleFrameHighlight: true);
             for (int c = 0; c < 3; c++)
             {
                 result[c] = candidate.DMin[c];

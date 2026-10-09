@@ -21,6 +21,7 @@ public static class CalibrationEngine
     public static CalibrationResult Analyze(IReadOnlyList<CalibrationFrame> frames,
         double[]? lockedDMin = null, double? boardThreshold = null,
         bool allowNeutralCarrier = false, bool excludeDarkValley = true,
+        bool stableSingleFrameHighlight = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(frames);
@@ -90,12 +91,27 @@ public static class CalibrationEngine
         cancellationToken.ThrowIfCancellationRequested();
         var images = frames.Select(f => f.Picture).ToArray();
         var masks = frames.Select(f => f.PictureMask ?? f.Picture).ToArray();
-        var highlight = FilmBase.DetectDMaxPerChannelFromRollDetailed(
-            images, tbase, 90.0, masks, boardThreshold, protectIndependentChannelExtrema: true,
-            excludeDarkValley: excludeDarkValley);
+        HighlightEndpointEstimate? highlight = null;
+        double[] span;
+        // The roll detector deliberately uses a very small density tail and then reaches a
+        // chroma consensus across frames. A single frame has no such consensus: one coloured
+        // specular patch or blue sky pixel can become the channel endpoint for the whole image.
+        // Reuse OpenRevelare's existing stable high-light estimator for this bounded OFX case;
+        // it averages the 99.5th-percentile same-source highlight region and leaves Dmin intact.
+        if (stableSingleFrameHighlight && frames.Count == 1)
+        {
+            span = FilmBase.AutoWbHighFromRoll(masks, tbase, boardThreshold, images);
+        }
+        else
+        {
+            highlight = FilmBase.DetectDMaxPerChannelFromRollDetailed(
+                images, tbase, 90.0, masks, boardThreshold, protectIndependentChannelExtrema: true,
+                excludeDarkValley: excludeDarkValley);
+            cancellationToken.ThrowIfCancellationRequested();
+            span = highlight?.Density ?? FilmBase.AutoWbHighFromRoll(
+                masks, tbase, boardThreshold, images);
+        }
         cancellationToken.ThrowIfCancellationRequested();
-        var span = highlight?.Density ?? FilmBase.AutoWbHighFromRoll(
-            masks, tbase, boardThreshold, images);
         if (span.Any(v => !double.IsFinite(v) || v <= 0))
             throw new InvalidOperationException("No usable highlight span; retain previous calibration.");
         // The legacy fallback can return its numerical ceiling for a fully opaque frame.
