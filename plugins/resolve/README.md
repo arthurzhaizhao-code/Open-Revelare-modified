@@ -16,10 +16,11 @@ Existing nodes created by the short-lived 685-default build are migrated once to
 This prototype replaces the Nami node. It does NOT stack on top of Nami inversion.
 Enable inversion defaults off. Analyze frame takes the current upstream image,
 box downsamples to at most 1024 per edge, and calls the existing OpenRevelare
-calibration core via NativeAOT. Successful analysis writes Dmin/Dmax, resets gain and shift,
-enables inversion and locks Dmin. With the lock on, further analysis only updates
-Dmax. Unlock explicitly to measure film base again. Reset gain + shift preserves both
-endpoints. Results live in ordinary persistent, nonanimated OFX parameters.
+calibration core via NativeAOT. Successful analysis writes freshly detected Dmin/Dmax, resets
+gain and shift, enables inversion and locks the Dmin controls. The lock prevents accidental
+numeric edits; pressing Analyze frame is an explicit request to detect both endpoints again.
+Use the manual Dmax sampler when the current Dmin must be retained. Reset gain + shift preserves
+both endpoints. Results live in ordinary persistent, nonanimated OFX parameters.
 
 Each gain stretches that channel about its fixed Dmin. Each Shift then moves the
 complete output channel in 10-bit code values without changing the stored Dmin.
@@ -39,10 +40,11 @@ Implemented: CPU float32 RGB/RGBA rendering, preserved alpha, single-frame autom
 analysis, Dmin lock, density endpoints, independent gain and Shift, numeric ROI, native
 calibration error reporting. No per-render auto-analysis or file access.
 
-The shared viewer sample box supports all three calibration points. Moving over the viewer
-shows a live box under the pointer. A click commits the current Sample size; a drag commits
-the exact rectangle between press and release. Use the box as film base to set Dmin from one
-co-sited robust RGB sample, or as highlight to set Dmax. Manual Dmin preserves the previous
+The shared viewer sample target supports all three calibration points. Resolve owns its native
+XY position handle, so viewer zoom, pan, pixel aspect and display transforms stay aligned with
+the pointer. Move that handle over the subject and adjust Sample size to set the yellow sampled
+area, then return to the OFX panel and choose Dmin, Dmax or neutral grey. Use the area as film
+base to set Dmin from one co-sited robust RGB sample, or as highlight to set Dmax. Manual Dmin preserves the previous
 per-channel spans until Dmax is sampled, so the image remains valid between the two actions.
 
 Neutral-grey calibration adds a genuine third point without moving Dmin or Dmax. Select a
