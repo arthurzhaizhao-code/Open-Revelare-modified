@@ -1,4 +1,5 @@
 #include "ofxImageEffect.h"
+#include "ofxInteract.h"
 #include "ofxProperty.h"
 #include "ofxParam.h"
 #include "ofxMessage.h"
@@ -25,6 +26,7 @@ const OfxPropertySuiteV1* props = nullptr;
 const OfxImageEffectSuiteV1* effects = nullptr;
 const OfxParameterSuiteV1* params = nullptr;
 const OfxMessageSuiteV1* messages = nullptr;
+const OfxInteractSuiteV1* interacts = nullptr;
 const char* minNames[] = {"dminR", "dminG", "dminB"};
 const char* maxNames[] = {"dmaxR", "dmaxG", "dmaxB"};
 const char* gainNames[] = {"slopeR", "slopeG", "slopeB"};
@@ -45,7 +47,9 @@ struct Instance {
     OfxParamHandle enabled{}, lock{}, status{}, neutralStatus{}, neutralTarget{}, neutralAbsolute{}, neutralOverlay{}, neutralSize{}, whiteCode{}, endpointSchema{};
     std::array<OfxParamHandle, 3> dmin{}, dmax{}, slope{}, shift{}, gamma{};
     std::array<OfxParamHandle, 4> roi{}, neutralRoi{};
-    bool neutralDragging=false,neutralDragMoved=false;
+    bool neutralDragging=false,neutralDragMoved=false,hoverValid=false;
+    double dragStartX=0.0,dragStartY=0.0,dragCurrentX=0.0,dragCurrentY=0.0;
+    double hoverX=0.0,hoverY=0.0;
 };
 OfxParamHandle parameter(OfxParamSetHandle set, const char* name) {
     OfxParamHandle p{}; check(params->paramGetHandle(set, name, &p, nullptr)); return p;
@@ -201,10 +205,12 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
     define(set,kOfxParamTypePushButton,"resetTrim","重置通道调整 / Reset gain + shift + midtone");
     const double roiDefault[]={0.05,0.05,0.90,0.90};
     for(int c=0;c<4;c++) defineNumber(set,roiNames[c],roiNames[c],roiDefault[c],0.0,1.0);
-    define(set,kOfxParamTypePushButton,"sampleNeutral","中性灰取样 / Sample neutral grey");
-    p=define(set,kOfxParamTypeBoolean,"neutralOverlay","点击或拖动定位取样点 / Click or drag sample point");
+    define(set,kOfxParamTypePushButton,"sampleDmin","框选设为 Dmin / Use box as film base");
+    define(set,kOfxParamTypePushButton,"sampleDmax","框选设为 Dmax / Use box as highlight");
+    define(set,kOfxParamTypePushButton,"sampleNeutral","框选设为中性灰 / Use box as neutral grey");
+    p=define(set,kOfxParamTypeBoolean,"neutralOverlay","显示取样框 / Show sample box");
     check(props->propSetInt(p,kOfxParamPropDefault,0,1));
-    props->propSetString(p,kOfxParamPropHint,0,"Click a neutral area in the Resolve viewer, or drag the marker to move it.");
+    props->propSetString(p,kOfxParamPropHint,0,"Move over the Resolve viewer for a live box. Click for the current size, or drag the exact rectangle.");
     defineNumber(set,"neutralSize","取样大小 / Sample size",0.03,0.005,0.50,0.005,3);
     p=define(set,kOfxParamTypeBoolean,"neutralAbsolute","已知灰卡：放到目标码值 / Known grey card: map to target");
     check(props->propSetInt(p,kOfxParamPropDefault,0,0));
@@ -346,35 +352,82 @@ void analyze(OfxImageEffectHandle effect,Instance& i,double time) {
         "; Dmax: "+highlightText+".";
     params->paramSetValue(i.status,status.c_str());
 }
-void sampleNeutral(OfxImageEffectHandle effect,Instance& i,double time) {
-    if(!integer(i.enabled,time)) throw std::runtime_error("Calibrate and enable inversion before sampling neutral grey.");
+std::array<double,3> sampleDensityBox(OfxImageEffectHandle effect,Instance& i,double time,const char* label) {
     OfxRectD rod{};check(effects->clipGetRegionOfDefinition(i.source,time,&rod));
     Image src(i.source,time,&rod);
     int w=src.bounds[2]-src.bounds[0],h=src.bounds[3]-src.bounds[1];
     double r[4];for(int c=0;c<4;c++)r[c]=number(i.neutralRoi[c],time);
     if(r[0]<0||r[1]<0||r[2]<=0||r[3]<=0||r[0]+r[2]>1.000001||r[1]+r[3]>1.000001)
-        throw std::runtime_error("Neutral ROI must fit inside [0,1].");
+        throw std::runtime_error(std::string(label)+" ROI must fit inside the image.");
     int x0=src.bounds[0]+static_cast<int>(r[0]*w),y0=src.bounds[1]+static_cast<int>(r[1]*h);
     int x1=std::min(src.bounds[2],x0+std::max(1,static_cast<int>(r[2]*w)));
     int y1=std::min(src.bounds[3],y0+std::max(1,static_cast<int>(r[3]*h)));
-    if(x1-x0<2||y1-y0<2)throw std::runtime_error("Neutral ROI is too small.");
-    double density[3]={};size_t count=0;
+    if(x1-x0<2||y1-y0<2)throw std::runtime_error(std::string(label)+" ROI is too small.");
+    std::array<std::vector<double>,3> samples;
+    const size_t reserve=static_cast<size_t>(x1-x0)*static_cast<size_t>(y1-y0);
+    for(auto& channel:samples)channel.reserve(reserve);
     for(int y=y0;y<y1;y++) {
-      if(effects->abort(effect))throw std::runtime_error("Neutral sampling cancelled; previous correction retained.");
+      if(effects->abort(effect))throw std::runtime_error(std::string(label)+" sampling cancelled; previous calibration retained.");
       for(int x=x0;x<x1;x++) {
         auto* s=src.pixel(x,y);if(!s)continue;
         float a=src.channels==4?s[3]:1.f;
-        if(!std::isfinite(a)||a<0.999f)throw std::runtime_error("Sample neutral grey before alpha/crop effects.");
+        if(!std::isfinite(a)||a<0.999f)throw std::runtime_error(std::string("Sample ")+label+" before alpha/crop effects.");
         for(int c=0;c<3;c++) {
             double v=src.premult?s[c]/a:s[c];
-            if(!std::isfinite(v)||v<=0)throw std::runtime_error("Neutral patch contains invalid or non-positive linear values.");
-            density[c]+=-std::log10(std::max(v,1e-4));
+            if(!std::isfinite(v)||v<=0)throw std::runtime_error(std::string(label)+" patch contains invalid or non-positive linear values.");
+            samples[c].push_back(-std::log10(std::max(v,1e-4)));
         }
-        count++;
       }
     }
-    if(!count)throw std::runtime_error("Neutral ROI contains no pixels.");
-    for(double& v:density)v/=static_cast<double>(count);
+    if(samples[0].empty())throw std::runtime_error(std::string(label)+" ROI contains no pixels.");
+    std::array<double,3> density{};
+    for(int c=0;c<3;c++) {
+        auto& values=samples[c];const size_t mid=values.size()/2;
+        std::nth_element(values.begin(),values.begin()+mid,values.end());
+        density[c]=values[mid];
+    }
+    return density;
+}
+void sampleEndpoint(OfxImageEffectHandle effect,Instance& i,double time,bool filmBase) {
+    const auto density=sampleDensityBox(effect,i,time,filmBase?"Dmin":"Dmax");
+    double oldMin[3],oldMax[3],oldSlope[3],oldShift[3],oldGamma[3];
+    for(int c=0;c<3;c++) {
+        oldMin[c]=number(i.dmin[c],time);oldMax[c]=number(i.dmax[c],time);
+        oldSlope[c]=number(i.slope[c],time);oldShift[c]=number(i.shift[c],time);oldGamma[c]=number(i.gamma[c],time);
+        if(!filmBase && density[c]<=oldMin[c]+0.001)
+            throw std::runtime_error("Dmax box is not denser than the locked Dmin in every channel.");
+    }
+    check(params->paramEditBegin(i.set,filmBase?"Sample film base":"Sample highlight endpoint"));
+    try {
+        for(int c=0;c<3;c++) {
+            if(filmBase) {
+                const double span=std::max(oldMax[c]-oldMin[c],0.10);
+                check(params->paramSetValue(i.dmin[c],density[c]));
+                check(params->paramSetValue(i.dmax[c],density[c]+span));
+            } else check(params->paramSetValue(i.dmax[c],density[c]));
+            check(params->paramSetValue(i.slope[c],1.0));
+            check(params->paramSetValue(i.shift[c],0.0));
+            check(params->paramSetValue(i.gamma[c],1.0));
+        }
+        check(params->paramSetValue(i.lock,1));check(params->paramSetValue(i.enabled,1));
+        check(params->paramEditEnd(i.set));
+    } catch(...) {
+        for(int c=0;c<3;c++) {
+            params->paramSetValue(i.dmin[c],oldMin[c]);params->paramSetValue(i.dmax[c],oldMax[c]);
+            params->paramSetValue(i.slope[c],oldSlope[c]);params->paramSetValue(i.shift[c],oldShift[c]);params->paramSetValue(i.gamma[c],oldGamma[c]);
+        }
+        params->paramEditEnd(i.set);throw;
+    }
+    updateLock(i,time);updateEndpointControls(i,time);
+    char text[320];std::snprintf(text,sizeof(text),
+        filmBase?"Manual Dmin sampled from one co-sited box: R %.4f / G %.4f / B %.4f. Previous spans retained until Dmax is sampled."
+                :"Manual Dmax sampled from one co-sited box: R %.4f / G %.4f / B %.4f. Dmin remains locked.",
+        density[0],density[1],density[2]);
+    check(params->paramSetValue(i.status,text));
+}
+void sampleNeutral(OfxImageEffectHandle effect,Instance& i,double time) {
+    if(!integer(i.enabled,time)) throw std::runtime_error("Calibrate and enable inversion before sampling neutral grey.");
+    const auto density=sampleDensityBox(effect,i,time,"Neutral");
     double target=number(i.neutralTarget,time),before[3],solved[3],oldGamma[3];
     const double codeSpan=number(i.whiteCode,time)-95.0;
     if(!(codeSpan>0.0))throw std::runtime_error("Cineon white placement must exceed code 95.");
@@ -422,13 +475,15 @@ bool interactContext(OfxPropertySetHandle in,OfxImageEffectHandle& effect,Instan
     time=0.0; props->propGetDouble(in,kOfxPropTime,0,&time);
     return true;
 }
-bool neutralPoint(OfxImageEffectHandle effect,double time,OfxPropertySetHandle in,double& nx,double& ny) {
+bool samplePoint(OfxImageEffectHandle effect,double time,OfxPropertySetHandle in,
+                 double& cx,double& cy,double& nx,double& ny) {
     double pen[2]{};
     if(props->propGetDoubleN(in,kOfxInteractPropPenPosition,2,pen)!=kOfxStatOK)return false;
     OfxRectD rod{};
     if(effects->clipGetRegionOfDefinition(instance(effect)->source,time,&rod)!=kOfxStatOK)return false;
     const double width=rod.x2-rod.x1,height=rod.y2-rod.y1;
     if(!(width>0.0&&height>0.0))return false;
+    cx=pen[0];cy=pen[1];
     nx=std::clamp((pen[0]-rod.x1)/width,0.0,1.0);
     ny=std::clamp((pen[1]-rod.y1)/height,0.0,1.0);
     return true;
@@ -441,6 +496,15 @@ void moveNeutralSample(Instance& i,double time,double x,double y) {
     i.neutralDragMoved=true;
     params->paramSetValue(i.neutralRoi[0],left);params->paramSetValue(i.neutralRoi[1],bottom);
     params->paramSetValue(i.neutralRoi[2],width);params->paramSetValue(i.neutralRoi[3],height);
+}
+void setSampleRectangle(Instance& i,double left,double bottom,double right,double top) {
+    left=std::clamp(left,0.0,1.0);right=std::clamp(right,0.0,1.0);
+    bottom=std::clamp(bottom,0.0,1.0);top=std::clamp(top,0.0,1.0);
+    const double minSize=0.002;
+    if(right-left<minSize){left=std::min(left,1.0-minSize);right=left+minSize;}
+    if(top-bottom<minSize){bottom=std::min(bottom,1.0-minSize);top=bottom+minSize;}
+    params->paramSetValue(i.neutralRoi[0],left);params->paramSetValue(i.neutralRoi[1],bottom);
+    params->paramSetValue(i.neutralRoi[2],right-left);params->paramSetValue(i.neutralRoi[3],top-bottom);
 }
 OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandle in,OfxPropertySetHandle) {
     try {
@@ -458,8 +522,16 @@ OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandl
         if(std::strcmp(action,kOfxInteractActionDraw)==0) {
             OfxRectD rod{};if(effects->clipGetRegionOfDefinition(i->source,time,&rod)!=kOfxStatOK)return kOfxStatReplyDefault;
             double r[4];for(int n=0;n<4;n++)r[n]=number(i->neutralRoi[n],time);
-            const double x0=rod.x1+r[0]*(rod.x2-rod.x1),y0=rod.y1+r[1]*(rod.y2-rod.y1);
-            const double x1=x0+r[2]*(rod.x2-rod.x1),y1=y0+r[3]*(rod.y2-rod.y1);
+            double x0=rod.x1+r[0]*(rod.x2-rod.x1),y0=rod.y1+r[1]*(rod.y2-rod.y1);
+            double x1=x0+r[2]*(rod.x2-rod.x1),y1=y0+r[3]*(rod.y2-rod.y1);
+            if(i->neutralDragging) {
+                x0=std::min(i->dragStartX,i->dragCurrentX);x1=std::max(i->dragStartX,i->dragCurrentX);
+                y0=std::min(i->dragStartY,i->dragCurrentY);y1=std::max(i->dragStartY,i->dragCurrentY);
+            } else if(i->hoverValid) {
+                const double size=std::clamp(number(i->neutralSize,time),0.005,0.5);
+                const double hw=(rod.x2-rod.x1)*size*.5,hh=(rod.y2-rod.y1)*size*.5;
+                x0=i->hoverX-hw;x1=i->hoverX+hw;y0=i->hoverY-hh;y1=i->hoverY+hh;
+            }
             double pixelScale[2]={1.0,1.0};props->propGetDoubleN(in,kOfxInteractPropPixelScale,2,pixelScale);
             const double cx=(x0+x1)*.5,cy=(y0+y1)*.5;
             const double hx=std::max((x1-x0)*.5,9.0*std::abs(pixelScale[0]));
@@ -471,24 +543,60 @@ OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandl
             glBegin(GL_LINES);glVertex2d(cx-hx,cy);glVertex2d(cx+hx,cy);glVertex2d(cx,cy-hy);glVertex2d(cx,cy+hy);glEnd();
             glPopAttrib();return kOfxStatOK;
         }
-        double x=0.0,y=0.0;
+        double cx=0.0,cy=0.0,x=0.0,y=0.0;
         if(std::strcmp(action,kOfxInteractActionPenDown)==0) {
-            if(!neutralPoint(effect,time,in,x,y))return kOfxStatReplyDefault;
+            if(!samplePoint(effect,time,in,cx,cy,x,y))return kOfxStatReplyDefault;
             i->neutralDragging=true;i->neutralDragMoved=false;
-            check(params->paramEditBegin(i->set,"Move neutral sample"));moveNeutralSample(*i,time,x,y);return kOfxStatOK;
-        }
-        if(std::strcmp(action,kOfxInteractActionPenMotion)==0 && i->neutralDragging) {
-            if(neutralPoint(effect,time,in,x,y))moveNeutralSample(*i,time,x,y);
+            i->dragStartX=i->dragCurrentX=cx;i->dragStartY=i->dragCurrentY=cy;
+            i->hoverX=cx;i->hoverY=cy;i->hoverValid=true;
+            if(interacts)interacts->interactRedraw(reinterpret_cast<OfxInteractHandle>(const_cast<void*>(handle)));
             return kOfxStatOK;
         }
+        if(std::strcmp(action,kOfxInteractActionPenMotion)==0 && i->neutralDragging) {
+            if(samplePoint(effect,time,in,cx,cy,x,y)) {
+                i->dragCurrentX=cx;i->dragCurrentY=cy;
+                double pixelScale[2]={1.0,1.0};props->propGetDoubleN(in,kOfxInteractPropPixelScale,2,pixelScale);
+                const double dx=std::abs(cx-i->dragStartX)/std::max(std::abs(pixelScale[0]),1e-12);
+                const double dy=std::abs(cy-i->dragStartY)/std::max(std::abs(pixelScale[1]),1e-12);
+                i->neutralDragMoved=dx>=4.0||dy>=4.0;
+                if(interacts)interacts->interactRedraw(reinterpret_cast<OfxInteractHandle>(const_cast<void*>(handle)));
+            }
+            return kOfxStatOK;
+        }
+        if(std::strcmp(action,kOfxInteractActionPenMotion)==0) {
+            if(samplePoint(effect,time,in,cx,cy,x,y)) {
+                i->hoverX=cx;i->hoverY=cy;i->hoverValid=true;
+                if(interacts)interacts->interactRedraw(reinterpret_cast<OfxInteractHandle>(const_cast<void*>(handle)));
+                return kOfxStatOK;
+            }
+            return kOfxStatReplyDefault;
+        }
         if(std::strcmp(action,kOfxInteractActionPenUp)==0 && i->neutralDragging) {
-            if(neutralPoint(effect,time,in,x,y))moveNeutralSample(*i,time,x,y);
+            if(!samplePoint(effect,time,in,cx,cy,x,y))return kOfxStatReplyDefault;
+            i->dragCurrentX=cx;i->dragCurrentY=cy;i->hoverX=cx;i->hoverY=cy;i->hoverValid=true;
+            check(params->paramEditBegin(i->set,"Set sample box"));
+            if(i->neutralDragMoved) {
+                double sx=0.0,sy=0.0,ex=0.0,ey=0.0;
+                OfxRectD rod{};check(effects->clipGetRegionOfDefinition(i->source,time,&rod));
+                sx=std::clamp((i->dragStartX-rod.x1)/(rod.x2-rod.x1),0.0,1.0);
+                sy=std::clamp((i->dragStartY-rod.y1)/(rod.y2-rod.y1),0.0,1.0);
+                ex=x;ey=y;
+                setSampleRectangle(*i,std::min(sx,ex),std::min(sy,ey),std::max(sx,ex),std::max(sy,ey));
+            } else moveNeutralSample(*i,time,x,y);
             i->neutralDragging=false;check(params->paramEditEnd(i->set));
-            if(i->neutralDragMoved)params->paramSetValue(i->neutralStatus,"Sample point updated. Press Sample neutral grey to apply correction.");
+            params->paramSetValue(i->neutralStatus,"Sample box updated. Choose Dmin, Dmax, or neutral-grey sampling.");
+            if(interacts)interacts->interactRedraw(reinterpret_cast<OfxInteractHandle>(const_cast<void*>(handle)));
             return kOfxStatOK;
         }
         if(std::strcmp(action,kOfxInteractActionLoseFocus)==0 && i->neutralDragging) {
-            i->neutralDragging=false;params->paramEditEnd(i->set);return kOfxStatOK;
+            i->neutralDragging=false;i->hoverValid=false;
+            if(interacts)interacts->interactRedraw(reinterpret_cast<OfxInteractHandle>(const_cast<void*>(handle)));
+            return kOfxStatOK;
+        }
+        if(std::strcmp(action,kOfxInteractActionLoseFocus)==0) {
+            i->hoverValid=false;
+            if(interacts)interacts->interactRedraw(reinterpret_cast<OfxInteractHandle>(const_cast<void*>(handle)));
+            return kOfxStatOK;
         }
         return kOfxStatReplyDefault;
     } catch(...) { return kOfxStatReplyDefault; }
@@ -523,6 +631,11 @@ OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
         // A rejected analysis leaves the existing grade intact; it is not a render failure.
         return kOfxStatOK;
     }
+    if((name=="sampleDmin" || name=="sampleDmax") && userEdited) {
+        try {sampleEndpoint(effect,i,time,name=="sampleDmin");}
+        catch(const std::exception& e){params->paramSetValue(i.status,e.what());}
+        return kOfxStatOK;
+    }
     if(name=="sampleNeutral" && userEdited) {
         try {sampleNeutral(effect,i,time);}
         catch(const std::exception& e){params->paramSetValue(i.neutralStatus,e.what());}
@@ -544,6 +657,7 @@ OfxStatus entry(const char* action,const void* handle,OfxPropertySetHandle in,Of
             effects=static_cast<const OfxImageEffectSuiteV1*>(host->fetchSuite(host->host,kOfxImageEffectSuite,1));
             params=static_cast<const OfxParameterSuiteV1*>(host->fetchSuite(host->host,kOfxParameterSuite,1));
             messages=static_cast<const OfxMessageSuiteV1*>(host->fetchSuite(host->host,kOfxMessageSuite,1));
+            interacts=static_cast<const OfxInteractSuiteV1*>(host->fetchSuite(host->host,kOfxInteractSuite,1));
             return props&&effects&&params?kOfxStatOK:kOfxStatErrMissingHostFeature;
         }
         if(std::strcmp(action,kOfxActionDescribe)==0)return describe(effect);

@@ -22,6 +22,7 @@ public static class CalibrationEngine
         double[]? lockedDMin = null, double? boardThreshold = null,
         bool allowNeutralCarrier = false, bool excludeDarkValley = true,
         bool stableSingleFrameHighlight = false,
+        bool requirePhysicalBase = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(frames);
@@ -67,16 +68,22 @@ public static class CalibrationEngine
                     if (estimated > 0.0 && estimated < Sprocket.NoBoard)
                         baseBoardCut = estimated;
                 }
-                var pick = FilmBase.EstimateTBaseByMode(mask, baseBoardCut, values);
-                evidence = FilmBaseEvidence.PhysicalMode;
-                if (pick is null)
+                // Prefer actual border topology over a whole-frame histogram mode.  A bright
+                // wall or sky can form a perfectly strong mode, but it cannot satisfy the
+                // separated, edge-supported orange-rebate tests.
+                var pick = FilmBase.EstimateTBaseFromEdgeSliver(mask, values,
+                    allowNeutralCarrier, baseBoardCut);
+                evidence = FilmBaseEvidence.PhysicalEdgeSliver;
+                if (pick is null && !requirePhysicalBase)
                 {
-                    pick = FilmBase.EstimateTBaseFromEdgeSliver(mask, values,
-                        allowNeutralCarrier, baseBoardCut);
-                    evidence = FilmBaseEvidence.PhysicalEdgeSliver;
+                    pick = FilmBase.EstimateTBaseByMode(mask, baseBoardCut, values);
+                    evidence = FilmBaseEvidence.PhysicalMode;
                 }
                 if (pick is null)
                 {
+                    if (requirePhysicalBase)
+                        throw new InvalidOperationException(
+                            "No reliable film-base border was found. Draw the sample box over visible bare film and use manual Dmin.");
                     pick = FilmBase.EstimateTBaseFromRoll(new[] { mask }, baseBoardCut,
                         values is null ? null : new[] { values });
                     evidence = FilmBaseEvidence.ContentInference;

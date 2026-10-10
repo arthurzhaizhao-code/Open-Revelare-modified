@@ -29,19 +29,24 @@ Inspect channel independence BEFORE downstream CST/LUT. Final Rec.709 may mix RG
 
 ROI controls are normalized left, bottom, width, height. They restrict highlight
 analysis, NOT output geometry; base analysis retains the whole input to find film
-edges. Coordinates use OFX bottom-left origin. The yellow viewer marker sets the neutral
-sample point. Input to automatic analysis must be finite, nonnegative and opaque; place it
-before alpha-generating geometry effects. Source quantisation is unknown (0).
-The existing detector also uses its default 5% inset inside the selected ROI.
+edges. Automatic Resolve analysis now requires a separated, orange, edge-supported
+film-base region. If none is visible it refuses to replace Dmin instead of treating picture
+content as film base. Input must be finite, nonnegative and opaque; place the plug-in before
+alpha-generating geometry effects. Source quantisation is unknown (0). The highlight detector
+also uses its default 5% inset inside the selected ROI.
 
 Implemented: CPU float32 RGB/RGBA rendering, preserved alpha, single-frame automatic
 analysis, Dmin lock, density endpoints, independent gain and Shift, numeric ROI, native
 calibration error reporting. No per-render auto-analysis or file access.
 
+The shared viewer sample box supports all three calibration points. Moving over the viewer
+shows a live box under the pointer. A click commits the current Sample size; a drag commits
+the exact rectangle between press and release. Use the box as film base to set Dmin from one
+co-sited robust RGB sample, or as highlight to set Dmax. Manual Dmin preserves the previous
+per-channel spans until Dmax is sampled, so the image remains valid between the two actions.
+
 Neutral-grey calibration adds a genuine third point without moving Dmin or Dmax. Select a
-known neutral patch with the yellow viewer marker, then press Sample neutral grey. Enable
-"Click or drag sample point" and click directly in the Resolve viewer to reposition it; dragging moves
-the marker, while Sample size controls the sampled area. By default the common
+known neutral patch with the same box, then press Sample neutral grey. By default the common
 level is the mean of the three readings, so an ordinary neutral object changes colour without
 claiming a reflectance. Enable Known grey card only for a measured card; 470 is the standard
 18% grey target. The plugin reports the three current sample codes and solves
@@ -49,7 +54,7 @@ one bounded midtone gamma per channel. Gamma is applied between the endpoints an
 linearly outside them, so black, white, sub-black and super-white remain finite. A random parade
 extreme is not a neutral reference; use a grey card or an object whose neutrality is known.
 
-Not implemented: roll/Photo Album acquisition and sharing, interactive ROI overlay,
+Not implemented: roll/Photo Album acquisition and sharing, interactive automatic-analysis ROI overlay,
 Metal acceleration and explicit input gamut management. Analysis is
 synchronous and may briefly block the UI. Host integration remains experimental;
 compilation and ABI tests do not establish that Resolve accepts every callback.

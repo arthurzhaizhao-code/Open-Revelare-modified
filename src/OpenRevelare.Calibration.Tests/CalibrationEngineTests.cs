@@ -92,6 +92,46 @@ public class CalibrationEngineTests
     }
 
     [Fact]
+    public void StrictSingleFrameRequiresVisiblePhysicalFilmBase()
+    {
+        var contentOnly = new Buffer(100, 100);
+        for (int p = 0; p < contentOnly.PixelCount; p++)
+        {
+            contentOnly.Data[p * 3] = 0.20f;
+            contentOnly.Data[p * 3 + 1] = 0.12f;
+            contentOnly.Data[p * 3 + 2] = 0.05f;
+        }
+
+        Assert.Throws<InvalidOperationException>(() => Engine.Analyze(
+            [new Frame(contentOnly, contentOnly)], stableSingleFrameHighlight: true,
+            requirePhysicalBase: true));
+    }
+
+    [Fact]
+    public void StrictSingleFrameUsesSeparatedOrangeEdgeRebate()
+    {
+        var frame = new Buffer(100, 100);
+        for (int y = 0; y < frame.Height; y++)
+        for (int x = 0; x < frame.Width; x++)
+        {
+            int p = (y * frame.Width + x) * 3;
+            bool rebate = x < 4;
+            frame.Data[p] = rebate ? 0.95f : 0.20f;
+            frame.Data[p + 1] = rebate ? 0.55f : 0.12f;
+            frame.Data[p + 2] = rebate ? 0.25f : 0.05f;
+        }
+
+        var result = Engine.Analyze([new Frame(frame, frame)],
+            stableSingleFrameHighlight: true, requirePhysicalBase: true);
+
+        Assert.Equal(FilmBaseEvidence.PhysicalEdgeSliver, result.BaseEvidence);
+        double[] measured = result.DMin.Select(v => Math.Pow(10.0, -v)).ToArray();
+        Assert.InRange(measured[0], 0.949, 0.951);
+        Assert.InRange(measured[1], 0.549, 0.551);
+        Assert.InRange(measured[2], 0.249, 0.251);
+    }
+
+    [Fact]
     public void MissingHighlightFailsWithoutChangingLockedBase()
     {
         var b = new Buffer(100, 100); // opaque, no resolvable picture
