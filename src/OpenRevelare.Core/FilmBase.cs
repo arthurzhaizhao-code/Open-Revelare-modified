@@ -2157,6 +2157,17 @@ public static class FilmBase
             int head = 0, tail = 0, count = 0;
             queue[tail++] = start;
             seen[start] = true;
+
+            void Add(int x, int y)
+            {
+                int p = y * cw + x;
+                if (!seen[p] && valid[p] && luma[p] >= threshold)
+                {
+                    seen[p] = true;
+                    queue[tail++] = p;
+                }
+            }
+
             while (head < tail)
             {
                 int p = queue[head++];
@@ -2183,16 +2194,6 @@ public static class FilmBase
             best = [sum[0] / count, sum[1] / count, sum[2] / count];
         }
         return best;
-
-        void Add(int x, int y)
-        {
-            int p = y * cw + x;
-            if (!seen[p] && valid[p] && luma[p] >= threshold)
-            {
-                seen[p] = true;
-                queue[tail++] = p;
-            }
-        }
     }
 
     /// <summary>
