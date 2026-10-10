@@ -71,9 +71,10 @@ NegBase provides two explicit Dmax modes:
 The UI describes the first as the mode for a diffuse white reference such as paper or white
 clothing, and the second as the mode for actual maximum density such as a specular highlight.
 
-This validates code 685 when the measured sample is known to be diffuse white. Automatic analysis
-estimates a density endpoint and therefore defaults to the named 1000-code “true Dmax” mode, rather than requiring
-the user to guess a value near the top of a 0–1023 scale.
+This validates code 685 when the measured sample is known to be diffuse white. The automatic default mode has not been established by the observations below. Neither the
+existence of these controls nor an automatically selected bright endpoint proves that it is a
+physical maximum-density measurement. The earlier recommendation to default to 1000 was an
+unverified design inference, not a verified NegBase behavior.
 
 ## Mathematical comparison with RevelareNegative
 
@@ -179,3 +180,27 @@ comparison after excluding the border, followed by a frame without any reliable 
 The test supports adopting NegBase's explicit endpoint-placement language. The Resolve plug-in now
 offers one-click **Diffuse white 685** and **True Dmax 1000** actions while retaining its custom
 numeric Cineon placement. No NegBase processing code is copied.
+
+## Audit correction — 2026-10-10
+
+The recorded kernel probes establish the inversion formula, not the automatic endpoint selection
+algorithm. Metadata and plausible output do not establish its sample masks, thresholds, default
+white placement, or absence of other CPU-side processing. These require controlled input/output
+comparisons. The prior claim that OpenRevelare should be preferred because its implementation is
+more explicit is not accuracy evidence. See the local calibration-audit results for a same-input
+regression observed between actual OpenRevelare plugin libraries.
+
+## Controlled candidate-selection experiment — 2026-10-10
+
+The first controlled NegBase run used identical synthetic negatives containing a uniform film-base
+border, a broad diffuse-white patch, a smaller neutral high-density patch, a strongly coloured
+high-density patch, and variants where the neutral patch was 8×8, 16×16, 32×32 or 64×64 pixels.
+The auto result changed when the neutral patch reached 32×32, but not at 8×8 or 16×16. A
+strongly coloured dense patch did not change the result. The two inputs with the 32×32 neutral
+patch produced identical output for every pixel shared by the inputs, even when one also contained
+the diffuse patch.
+
+This is evidence for a minimum-area, same-source, chroma-consistent candidate, followed by a
+density choice. It is not evidence for a fixed 685 or 1000 placement. The Resolve single-frame
+path now has a guarded experimental candidate detector with the existing percentile estimator as
+fallback; it has not yet been packaged or installed.

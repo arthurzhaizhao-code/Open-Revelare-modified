@@ -2089,6 +2089,113 @@ public static class FilmBase
     }
 
     /// <summary>
+    /// Finds a single-frame highlight candidate using the same observable behaviour measured
+    /// from NegBase: a sufficiently large connected bright region whose three channel densities
+    /// agree. This avoids letting a tiny specular point or three independent channel extrema
+    /// define the endpoint. The existing percentile estimator remains the fallback when no
+    /// neutral region is present.
+    /// </summary>
+    public static double[]? DetectNeutralHighlightFromFrame(
+        ImageBuffer image,
+        double[] tBase,
+        double? sprocketThreshold = null,
+        double edgeInset = 0.05,
+        double minAreaFraction = 0.001,
+        double maxChromaRange = 0.35)
+    {
+        if (image.Width < 20 || image.Height < 20 || tBase.Length != 3)
+            return null;
+
+        int xi = RoundHalfEven(image.Width * edgeInset);
+        int yi = RoundHalfEven(image.Height * edgeInset);
+        int cw = image.Width - 2 * xi;
+        int ch = image.Height - 2 * yi;
+        if (cw < 4 || ch < 4) { xi = yi = 0; cw = image.Width; ch = image.Height; }
+
+        int n = checked(cw * ch);
+        var density = new double[n * 3];
+        var luma = new double[n];
+        var valid = new bool[n];
+        double[] tb = [Math.Max(tBase[0], 1e-10), Math.Max(tBase[1], 1e-10), Math.Max(tBase[2], 1e-10)];
+        double step = SourceStep(image);
+        for (int y = 0; y < ch; y++)
+        for (int x = 0; x < cw; x++)
+        {
+            int p = y * cw + x;
+            int source = ((y + yi) * image.Width + x + xi) * 3;
+            double sum = 0.0;
+            bool ok = true;
+            for (int c = 0; c < 3; c++)
+            {
+                double transmission = image.Data[source + c] / tb[c];
+                double d = DensityMath.DensityOf(transmission);
+                density[p * 3 + c] = d;
+                sum += d;
+                if (d >= DensityMath.RealDensityCeiling ||
+                    (step > 0 && !IsResolved(transmission, step / tb[c]))) ok = false;
+            }
+            luma[p] = sum / 3.0;
+            valid[p] = ok && (sprocketThreshold is not double cut ||
+                              ((double)image.Data[source] + image.Data[source + 1] + image.Data[source + 2]) / 3.0 <= cut);
+        }
+
+        var ranked = new double[n];
+        int rankedCount = 0;
+        for (int i = 0; i < n; i++) if (valid[i]) ranked[rankedCount++] = luma[i];
+        if (rankedCount == 0) return null;
+        Array.Resize(ref ranked, rankedCount);
+        double threshold = Percentile(ranked, 95.0);
+        int minArea = Math.Max(16, (int)Math.Ceiling(n * minAreaFraction));
+        var seen = new bool[n];
+        double[]? best = null;
+        double bestMean = double.NegativeInfinity;
+        var queue = new int[n];
+        var component = new int[n];
+        for (int start = 0; start < n; start++)
+        {
+            if (seen[start] || !valid[start] || luma[start] < threshold) continue;
+            int head = 0, tail = 0, count = 0;
+            queue[tail++] = start;
+            seen[start] = true;
+            while (head < tail)
+            {
+                int p = queue[head++];
+                component[count++] = p;
+                int px = p % cw, py = p / cw;
+                if (px > 0) Add(px - 1, py);
+                if (px + 1 < cw) Add(px + 1, py);
+                if (py > 0) Add(px, py - 1);
+                if (py + 1 < ch) Add(px, py + 1);
+            }
+            if (count < minArea) continue;
+            var sum = new double[3];
+            for (int i = 0; i < count; i++)
+            {
+                int p = component[i];
+                for (int c = 0; c < 3; c++) sum[c] += density[p * 3 + c];
+            }
+            double channelMin = Math.Min(sum[0], Math.Min(sum[1], sum[2])) / count;
+            double channelMax = Math.Max(sum[0], Math.Max(sum[1], sum[2])) / count;
+            if (channelMax - channelMin > maxChromaRange) continue;
+            double meanDensity = (sum[0] + sum[1] + sum[2]) / (count * 3.0);
+            if (meanDensity <= bestMean) continue;
+            bestMean = meanDensity;
+            best = [sum[0] / count, sum[1] / count, sum[2] / count];
+        }
+        return best;
+
+        void Add(int x, int y)
+        {
+            int p = y * cw + x;
+            if (!seen[p] && valid[p] && luma[p] >= threshold)
+            {
+                seen[p] = true;
+                queue[tail++] = p;
+            }
+        }
+    }
+
+    /// <summary>
     /// The roll's highlight-end density vector: the per-channel density of the ONE physical
     /// highlight <see cref="AutoWbHighFromRoll"/> balances on, with the same masking (light-board
     /// dilation, dark valley, edge inset, opaque-edge rejection) and the same same-source pick.

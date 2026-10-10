@@ -107,11 +107,14 @@ public static class CalibrationEngine
         // The roll detector deliberately uses a very small density tail and then reaches a
         // chroma consensus across frames. A single frame has no such consensus: one coloured
         // specular patch or blue sky pixel can become the channel endpoint for the whole image.
-        // Reuse OpenRevelare's existing stable high-light estimator for this bounded OFX case;
-        // it averages the 99.5th-percentile same-source highlight region and leaves Dmin intact.
+        // Reuse the bounded single-frame estimator for this OFX case. It first looks for a
+        // sufficiently large, chroma-consistent highlight region and falls back to the existing
+        // 99.5th-percentile same-source estimator; Dmin remains unchanged.
         if (stableSingleFrameHighlight && frames.Count == 1)
         {
-            span = FilmBase.AutoWbHighFromRoll(masks, tbase, boardThreshold, images);
+            span = FilmBase.DetectNeutralHighlightFromFrame(
+                       masks[0], tbase, boardThreshold)
+                   ?? FilmBase.AutoWbHighFromRoll(masks, tbase, boardThreshold, images);
         }
         else
         {
