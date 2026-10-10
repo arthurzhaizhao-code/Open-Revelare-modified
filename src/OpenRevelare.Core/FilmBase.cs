@@ -141,8 +141,11 @@ public static class FilmBase
         const double MinShare = 0.0005;
         // Share of the cluster that has to lie in the border band.
         const double MinEdgeShare = 0.70;
-        // Width of that band, per side.
-        const double EdgeBand = 0.10;
+        // Width of that band, per side. Copy-stand captures often include black surround outside
+        // the film, so the rebate is an inset rectangle rather than touching the source bounds.
+        // Twenty percent still excludes the central 60% while admitting the measured 0023 frame,
+        // whose left and right rebates sit about 10% and 18% in from the captured canvas.
+        const double EdgeBand = 0.20;
         // Least R:B ratio for the cluster to be a C-41 mask rather than a neutral highlight.
         const double MinOrangeRatio = 1.35;
 
