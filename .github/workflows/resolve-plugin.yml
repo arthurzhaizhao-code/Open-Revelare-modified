@@ -1,0 +1,28 @@
+name: resolve-plugin
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'plugins/resolve/**'
+      - 'src/OpenRevelare.Calibration*/**'
+      - 'src/OpenRevelare.Core/**'
+      - '.github/workflows/resolve-plugin.yml'
+permissions:
+  contents: read
+jobs:
+  macos-plugin:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build and validate OFX and NativeAOT calibration bridge
+        run: bash plugins/resolve/build-macos.sh "$RUNNER_TEMP/revelare-plugin"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RevelareNegative-macos-prototype
+          path: |
+            ${{ runner.temp }}/revelare-plugin/RevelareNegative-*.zip
+            ${{ runner.temp }}/revelare-plugin/RevelareNegative-*.pkg
+          if-no-files-found: error

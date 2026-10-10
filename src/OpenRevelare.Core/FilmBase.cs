@@ -141,8 +141,11 @@ public static class FilmBase
         const double MinShare = 0.0005;
         // Share of the cluster that has to lie in the border band.
         const double MinEdgeShare = 0.70;
-        // Width of that band, per side.
-        const double EdgeBand = 0.10;
+        // Width of that band, per side. Copy-stand captures often include black surround outside
+        // the film, so the rebate is an inset rectangle rather than touching the source bounds.
+        // Twenty percent still excludes the central 60% while admitting the measured 0023 frame,
+        // whose left and right rebates sit about 10% and 18% in from the captured canvas.
+        const double EdgeBand = 0.20;
         // Least R:B ratio for the cluster to be a C-41 mask rather than a neutral highlight.
         const double MinOrangeRatio = 1.35;
 
@@ -587,10 +590,11 @@ public static class FilmBase
     public static double[]? DetectDMaxPerChannelFromRoll(
         IReadOnlyList<ImageBuffer> images, double[] tBase, double rollPercentile = 90.0,
         IReadOnlyList<ImageBuffer>? masks = null, double? sprocketThreshold = null,
-        double edgeInset = 0.05, bool protectIndependentChannelExtrema = true)
+        double edgeInset = 0.05, bool protectIndependentChannelExtrema = true,
+        bool excludeDarkValley = true)
         => DetectDMaxPerChannelFromRollDetailed(
             images, tBase, rollPercentile, masks, sprocketThreshold, edgeInset,
-            protectIndependentChannelExtrema)?.Density;
+            protectIndependentChannelExtrema, excludeDarkValley)?.Density;
 
     /// <summary>
     /// Detailed form of <see cref="DetectDMaxPerChannelFromRoll"/>. The endpoint remains a
@@ -604,7 +608,8 @@ public static class FilmBase
     public static HighlightEndpointEstimate? DetectDMaxPerChannelFromRollDetailed(
         IReadOnlyList<ImageBuffer> images, double[] tBase, double rollPercentile = 90.0,
         IReadOnlyList<ImageBuffer>? masks = null, double? sprocketThreshold = null,
-        double edgeInset = 0.05, bool protectIndependentChannelExtrema = true)
+        double edgeInset = 0.05, bool protectIndependentChannelExtrema = true,
+        bool excludeDarkValley = true)
     {
         var perFrame = new List<double[]>();
         var candidateWeights = new List<double>();
@@ -646,13 +651,13 @@ public static class FilmBase
                 }
             }
 
-            bool[] keep = HighDensityKeepMask(mask, sprocketThreshold);
+            bool[] keep = HighDensityKeepMask(mask, sprocketThreshold, excludeDarkValley);
 
             int n = img.PixelCount;
 
             // Density ceiling, same constant and same reason as AutoWbHighFromRoll: an opaque
             // sprocket / film-frame edge is fully light-blocking, so it lands on
-            // FrameParams.DensityCeiling (4.0), above any real picture tone (~1–1.5). The dark
+            // DensityMath.DensityCeiling (4.0), above any real picture tone (~1–1.5). The dark
             // valley misses it whenever the histogram is not cleanly bimodal — which is exactly
             // the case on rolls that kept the sprockets in frame — so the ceiling is what
             // actually rejects it.
@@ -687,9 +692,9 @@ public static class FilmBase
                     continue;
                 }
                 resolved++;
-                double d0 = FrameParams.DensityOf(t0);
-                double d1 = FrameParams.DensityOf(t1);
-                double d2 = FrameParams.DensityOf(t2);
+                double d0 = DensityMath.DensityOf(t0);
+                double d1 = DensityMath.DensityOf(t1);
+                double d2 = DensityMath.DensityOf(t2);
                 if (!IsEndpointSample(d0, d1, d2)) continue;
                 dens[0][k] = d0; dens[1][k] = d1; dens[2][k] = d2;
                 k++;
@@ -943,7 +948,7 @@ public static class FilmBase
         // a diagnostic, not an unasked-for exposure adjustment.
         const double CeilingRiskMargin = 0.02;
         bool ceilingClippingRisk = endpoint.Any(
-            d => d >= FrameParams.RealDensityCeiling - CeilingRiskMargin);
+            d => d >= DensityMath.RealDensityCeiling - CeilingRiskMargin);
         bool clippingRisk = percentileClippingRisk || ceilingClippingRisk;
 
         double dispersion = WeightedLogChromaDispersion(perFrame, candidateWeights, bestIdx);
@@ -1297,9 +1302,9 @@ public static class FilmBase
                 double t2 = img.Data[p * 3 + 2] / Math.Max(tBase[2], 1e-10);
                 if (step > 0 && !(IsResolved(t0, stepN[0]) && IsResolved(t1, stepN[1])
                                   && IsResolved(t2, stepN[2]))) continue;
-                double d0 = FrameParams.DensityOf(t0);
-                double d1 = FrameParams.DensityOf(t1);
-                double d2 = FrameParams.DensityOf(t2);
+                double d0 = DensityMath.DensityOf(t0);
+                double d1 = DensityMath.DensityOf(t1);
+                double d2 = DensityMath.DensityOf(t2);
                 // Same test as the detector, and it MUST stay the same: this maximum is what the
                 // no-clip rescale compares the detector's endpoint against, so a pixel counted
                 // here but rejected there would demand headroom for a sample the endpoint was
@@ -1370,13 +1375,13 @@ public static class FilmBase
     /// Two independent rejections, because there are two different ways a sample can carry no
     /// endpoint information and each is invisible to the other's test:
     ///
-    /// TOTAL density at or above <see cref="FrameParams.RealDensityCeiling"/> — an opaque sprocket
+    /// TOTAL density at or above <see cref="DensityMath.RealDensityCeiling"/> — an opaque sprocket
     /// hole, a mask card, a film-frame edge. The whole pixel is light-blocking, so it is rejected
     /// as ONE physical sample rather than per channel; dropping channels independently here would
     /// bias the endpoints against each other, which is the very thing they are supposed to measure.
     ///
-    /// ANY SINGLE CHANNEL pinned at <see cref="FrameParams.DensityCeiling"/> — that channel
-    /// underflowed to zero transmittance and <see cref="FrameParams.DensityOf"/> clamped it. The
+    /// ANY SINGLE CHANNEL pinned at <see cref="DensityMath.DensityCeiling"/> — that channel
+    /// underflowed to zero transmittance and <see cref="DensityMath.DensityOf"/> clamped it. The
     /// clamp value is a FLOOR ARTEFACT, not a measurement: the real density is unknown and merely
     /// at-least-this. Averaging it into an endpoint states a density the film never had.
     ///
@@ -1394,10 +1399,10 @@ public static class FilmBase
     /// </summary>
     private static bool IsEndpointSample(double d0, double d1, double d2)
     {
-        if ((d0 + d1 + d2) / 3.0 >= FrameParams.RealDensityCeiling) return false;
-        return d0 < FrameParams.DensityCeiling
-            && d1 < FrameParams.DensityCeiling
-            && d2 < FrameParams.DensityCeiling;
+        if ((d0 + d1 + d2) / 3.0 >= DensityMath.RealDensityCeiling) return false;
+        return d0 < DensityMath.DensityCeiling
+            && d1 < DensityMath.DensityCeiling
+            && d2 < DensityMath.DensityCeiling;
     }
 
     /// <summary>
@@ -1473,7 +1478,8 @@ public static class FilmBase
     /// </summary>
     private static double SourceStep(ImageBuffer img) => img.SourceQuantisationStep;
 
-    public static bool[] HighDensityKeepMask(ImageBuffer maskFrame, double? sprocketThreshold)
+    public static bool[] HighDensityKeepMask(ImageBuffer maskFrame, double? sprocketThreshold,
+                                             bool excludeDarkValley = true)
     {
         int w = maskFrame.Width, h = maskFrame.Height, n = w * h;
         var keep = new bool[n];
@@ -1512,9 +1518,12 @@ public static class FilmBase
 
         // Dark end: the opaque mask card / edge line — exactly the thing that would otherwise
         // set the endpoint. <= 0 is the "no mask present" sentinel.
-        double darkValley = Sprocket.EstimateDarkValley(maskFrame);
-        if (darkValley > 0.0)
-            for (int p = 0; p < n; p++) if (!(luma[p] > darkValley)) keep[p] = false;
+        if (excludeDarkValley)
+        {
+            double darkValley = Sprocket.EstimateDarkValley(maskFrame);
+            if (darkValley > 0.0)
+                for (int p = 0; p < n; p++) if (!(luma[p] > darkValley)) keep[p] = false;
+        }
 
         // Never hand back an empty selection — an all-masked frame should fall back to measuring
         // everything rather than silently dropping out of the roll statistics.
@@ -1570,7 +1579,7 @@ public static class FilmBase
         {
             if (keep is not null && !keep[p]) continue;
             for (int c = 0; c < 3; c++)
-                density[n++] = FrameParams.DensityOf(d[p * 3 + c]);
+                density[n++] = DensityMath.DensityOf(d[p * 3 + c]);
         }
         if (n == 0) return 0.0;
         var used = new double[n];
@@ -1630,7 +1639,7 @@ public static class FilmBase
             for (int p = 0; p < n; p++)
             {
                 if (keep is not null && !keep[p]) continue;
-                col[k++] = FrameParams.DensityOf(d[p * 3 + c]);
+                col[k++] = DensityMath.DensityOf(d[p * 3 + c]);
             }
             if (k == 0) return DetectDMaxPerChannel(image);   // all masked out → measure everything
             var used = new double[k];
@@ -1915,10 +1924,10 @@ public static class FilmBase
     /// light board, so <see cref="BrightTailMean"/>'s guard is what stops the board's clipped
     /// plateau from BEING the tail. The highlight end has the mirror problem and no equivalent
     /// bound: an opaque sprocket edge, a blocking card, or any region crushed to code 0 lands on
-    /// one density level — <see cref="FrameParams.DensityCeiling"/> or near it — and a single
+    /// one density level — <see cref="DensityMath.DensityCeiling"/> or near it — and a single
     /// such plateau clears a 0.1% tail on its own. The existing defences each miss a case the
     /// other covers: <see cref="IsEndpointSample"/>'s ceiling test rejects only what reaches
-    /// <see cref="FrameParams.RealDensityCeiling"/>, and the luma cuts need a cleanly bimodal
+    /// <see cref="DensityMath.RealDensityCeiling"/>, and the luma cuts need a cleanly bimodal
     /// histogram. A flat region sitting BELOW the ceiling but above the picture — an
     /// under-illuminated corner, a partially transmissive card, a scanner surround — passes both
     /// and then defines the roll's white point.
@@ -1965,12 +1974,12 @@ public static class FilmBase
     /// value" means the same thing here as <see cref="QuantiseLuma"/> means at the other end.
     ///
     /// Density is unbounded above where luma is not, so the scale is fixed to
-    /// <see cref="FrameParams.DensityCeiling"/> rather than to 1.0: everything at or above the
+    /// <see cref="DensityMath.DensityCeiling"/> rather than to 1.0: everything at or above the
     /// ceiling — every fully light-blocking pixel — collapses into the top level, which is
     /// precisely the plateau the guard exists to drop.
     /// </summary>
     private static long QuantiseDensity(double density)
-        => (long)(Math.Clamp(density / FrameParams.DensityCeiling, 0.0, 1.0) * 65535.0);
+        => (long)(Math.Clamp(density / DensityMath.DensityCeiling, 0.0, 1.0) * 65535.0);
 
     /// <summary>
     /// The plateau-size and release thresholds for a tail of <paramref name="tailFraction"/> of
@@ -2083,6 +2092,114 @@ public static class FilmBase
     }
 
     /// <summary>
+    /// Finds a single-frame highlight candidate using the same observable behaviour measured
+    /// from NegBase: a sufficiently large connected bright region whose three channel densities
+    /// agree. This avoids letting a tiny specular point or three independent channel extrema
+    /// define the endpoint. The existing percentile estimator remains the fallback when no
+    /// neutral region is present.
+    /// </summary>
+    public static double[]? DetectNeutralHighlightFromFrame(
+        ImageBuffer image,
+        double[] tBase,
+        double? sprocketThreshold = null,
+        double edgeInset = 0.05,
+        double minAreaFraction = 0.001,
+        double maxChromaRange = 0.35)
+    {
+        if (image.Width < 20 || image.Height < 20 || tBase.Length != 3)
+            return null;
+
+        int xi = RoundHalfEven(image.Width * edgeInset);
+        int yi = RoundHalfEven(image.Height * edgeInset);
+        int cw = image.Width - 2 * xi;
+        int ch = image.Height - 2 * yi;
+        if (cw < 4 || ch < 4) { xi = yi = 0; cw = image.Width; ch = image.Height; }
+
+        int n = checked(cw * ch);
+        var density = new double[n * 3];
+        var luma = new double[n];
+        var valid = new bool[n];
+        double[] tb = [Math.Max(tBase[0], 1e-10), Math.Max(tBase[1], 1e-10), Math.Max(tBase[2], 1e-10)];
+        double step = SourceStep(image);
+        for (int y = 0; y < ch; y++)
+        for (int x = 0; x < cw; x++)
+        {
+            int p = y * cw + x;
+            int source = ((y + yi) * image.Width + x + xi) * 3;
+            double sum = 0.0;
+            bool ok = true;
+            for (int c = 0; c < 3; c++)
+            {
+                double transmission = image.Data[source + c] / tb[c];
+                double d = DensityMath.DensityOf(transmission);
+                density[p * 3 + c] = d;
+                sum += d;
+                if (d >= DensityMath.RealDensityCeiling ||
+                    (step > 0 && !IsResolved(transmission, step / tb[c]))) ok = false;
+            }
+            luma[p] = sum / 3.0;
+            valid[p] = ok && (sprocketThreshold is not double cut ||
+                              ((double)image.Data[source] + image.Data[source + 1] + image.Data[source + 2]) / 3.0 <= cut);
+        }
+
+        var ranked = new double[n];
+        int rankedCount = 0;
+        for (int i = 0; i < n; i++) if (valid[i]) ranked[rankedCount++] = luma[i];
+        if (rankedCount == 0) return null;
+        Array.Resize(ref ranked, rankedCount);
+        double threshold = Percentile(ranked, 95.0);
+        int minArea = Math.Max(16, (int)Math.Ceiling(n * minAreaFraction));
+        var seen = new bool[n];
+        double[]? best = null;
+        double bestMean = double.NegativeInfinity;
+        var queue = new int[n];
+        var component = new int[n];
+        for (int start = 0; start < n; start++)
+        {
+            if (seen[start] || !valid[start] || luma[start] < threshold) continue;
+            int head = 0, tail = 0, count = 0;
+            queue[tail++] = start;
+            seen[start] = true;
+
+            void Add(int x, int y)
+            {
+                int p = y * cw + x;
+                if (!seen[p] && valid[p] && luma[p] >= threshold)
+                {
+                    seen[p] = true;
+                    queue[tail++] = p;
+                }
+            }
+
+            while (head < tail)
+            {
+                int p = queue[head++];
+                component[count++] = p;
+                int px = p % cw, py = p / cw;
+                if (px > 0) Add(px - 1, py);
+                if (px + 1 < cw) Add(px + 1, py);
+                if (py > 0) Add(px, py - 1);
+                if (py + 1 < ch) Add(px, py + 1);
+            }
+            if (count < minArea) continue;
+            var sum = new double[3];
+            for (int i = 0; i < count; i++)
+            {
+                int p = component[i];
+                for (int c = 0; c < 3; c++) sum[c] += density[p * 3 + c];
+            }
+            double channelMin = Math.Min(sum[0], Math.Min(sum[1], sum[2])) / count;
+            double channelMax = Math.Max(sum[0], Math.Max(sum[1], sum[2])) / count;
+            if (channelMax - channelMin > maxChromaRange) continue;
+            double meanDensity = (sum[0] + sum[1] + sum[2]) / (count * 3.0);
+            if (meanDensity <= bestMean) continue;
+            bestMean = meanDensity;
+            best = [sum[0] / count, sum[1] / count, sum[2] / count];
+        }
+        return best;
+    }
+
+    /// <summary>
     /// The roll's highlight-end density vector: the per-channel density of the ONE physical
     /// highlight <see cref="AutoWbHighFromRoll"/> balances on, with the same masking (light-board
     /// dilation, dark valley, edge inset, opaque-edge rejection) and the same same-source pick.
@@ -2189,14 +2306,14 @@ public static class FilmBase
                 for (int c = 0; c < 3; c++)
                 {
                     double tc = vd[p * 3 + c] / tb[c];
-                    double dc = FrameParams.DensityOf(tc);
+                    double dc = DensityMath.DensityOf(tc);
                     // A channel pinned at the clamp underflowed to zero transmittance: the value
                     // is a floor artefact, not a density, and this method's whole output is a
                     // per-channel MEAN over the top tail, so one fabricated 4.0 lands directly in
                     // the answer. Marked here rather than tested after the fact because the
                     // rejection below ranks on TOTAL density, which a single clamped channel does
                     // not lift past the ceiling — see IsEndpointSample.
-                    if (dc >= FrameParams.DensityCeiling) clamped = true;
+                    if (dc >= DensityMath.DensityCeiling) clamped = true;
                     // And a channel too coarsely quantised to resolve its own density is the same
                     // kind of non-measurement one step short of the clamp — see IsResolved.
                     if (step > 0 && !IsResolved(tc, stepN[c])) clamped = true;
@@ -2206,18 +2323,18 @@ public static class FilmBase
                 // Route it into the existing rejection rather than adding a second pass: that
                 // filter already drops everything at or above RealDensityCeiling, so pushing the
                 // total to the clamp marks this sample without duplicating the compaction below.
-                totalD[k] = clamped ? FrameParams.DensityCeiling : sum / 3.0;
+                totalD[k] = clamped ? DensityMath.DensityCeiling : sum / 3.0;
                 k++;
             }
 
             // Reject opaque sprocket / film-frame BLACK edges before picking the highlight.
             // These are fully light-blocking (t_norm → 0), so their density lands on
-            // FrameParams.DensityCeiling (4.0), above any real picture tone (~1–1.5). Both the
+            // DensityMath.DensityCeiling (4.0), above any real picture tone (~1–1.5). Both the
             // bright cut and the dark valley miss them on rolls where the user kept the sprockets
             // in frame and the valley returned its no-op sentinel — and "pick max density" then
             // locks onto dead black instead of the highlight.
             int realCount = 0;
-            for (int i = 0; i < keptCount; i++) if (totalD[i] < FrameParams.RealDensityCeiling) realCount++;
+            for (int i = 0; i < keptCount; i++) if (totalD[i] < DensityMath.RealDensityCeiling) realCount++;
             if (realCount > 0 && realCount < keptCount)
             {
                 var d2 = new double[realCount * 3];
@@ -2225,7 +2342,7 @@ public static class FilmBase
                 int j = 0;
                 for (int i = 0; i < keptCount; i++)
                 {
-                    if (!(totalD[i] < FrameParams.RealDensityCeiling)) continue;
+                    if (!(totalD[i] < DensityMath.RealDensityCeiling)) continue;
                     d2[j * 3] = dens[i * 3]; d2[j * 3 + 1] = dens[i * 3 + 1]; d2[j * 3 + 2] = dens[i * 3 + 2];
                     t2[j] = totalD[i];
                     j++;
@@ -2344,7 +2461,7 @@ public static class FilmBase
             seen[r] = true;
             for (int c = 0; c < 3; c++)
             {
-                double density = FrameParams.DensityOf(d[p * 3 + c]);
+                double density = DensityMath.DensityOf(d[p * 3 + c]);
                 if (density > peak[r]) peak[r] = density;
             }
         }
@@ -2427,7 +2544,7 @@ public static class FilmBase
         var sum = new double[3];
         for (int p = 0; p < n; p++)
             for (int c = 0; c < 3; c++)
-                sum[c] += FrameParams.DensityOf(patch[p * 3 + c] / tb[c]);
+                sum[c] += DensityMath.DensityOf(patch[p * 3 + c] / tb[c]);
         return new[] { sum[0] / n, sum[1] / n, sum[2] / n };
     }
 

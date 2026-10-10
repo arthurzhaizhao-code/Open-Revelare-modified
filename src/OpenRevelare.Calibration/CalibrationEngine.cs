@@ -1,0 +1,167 @@
+using OpenRevelare.Core;
+
+namespace OpenRevelare.Calibration;
+
+/// <summary>Caller-prepared buffers. Base retains film edges; picture excludes borders.
+/// Mask buffers and board threshold must be in the same domain. The engine does no decoding,
+/// colour conversion, geometry or UI mutation. Callers must not mutate buffers during analysis.</summary>
+public sealed record CalibrationFrame(ImageBuffer Base, ImageBuffer Picture,
+    ImageBuffer? BaseMask = null, ImageBuffer? PictureMask = null);
+
+public sealed record CalibrationResult(double[] DMin, double[] DMax,
+    FilmBaseEvidence? BaseEvidence, FilmBaseEstimate? RollBaseDiagnostics,
+    HighlightEndpointEstimate? HighlightDiagnostics, bool UsedHighlightFallback,
+    bool UsedLockedDMin);
+
+public static class CalibrationEngine
+{
+    /// <summary>Returns a complete candidate or throws. Never modifies caller parameters or
+    /// images. Passing lockedDMin skips ALL base estimation, including on a single frame.
+    /// Cancellation is checked between estimators; their existing inner loops are unchanged.</summary>
+    public static CalibrationResult Analyze(IReadOnlyList<CalibrationFrame> frames,
+        double[]? lockedDMin = null, double? boardThreshold = null,
+        bool allowNeutralCarrier = false, bool excludeDarkValley = true,
+        bool stableSingleFrameHighlight = false,
+        bool requirePhysicalBase = false,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(frames);
+        if (frames.Count == 0) throw new ArgumentException("No analysis frames.", nameof(frames));
+        if (boardThreshold is { } threshold && (!double.IsFinite(threshold) || threshold <= 0))
+            throw new ArgumentOutOfRangeException(nameof(boardThreshold));
+        foreach (var f in frames)
+        {
+            ArgumentNullException.ThrowIfNull(f);
+            ValidateImage(f.Base);
+            ValidateImage(f.Picture);
+            ValidatePair(f.Base, f.BaseMask);
+            ValidatePair(f.Picture, f.PictureMask);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        double[] dmin;
+        double[]? measuredRollBase = null;
+        FilmBaseEvidence? evidence = null;
+        FilmBaseEstimate? baseDiagnostics = null;
+        if (lockedDMin is not null)
+        {
+            if (lockedDMin.Length != 3 || lockedDMin.Any(v => !double.IsFinite(v)))
+                throw new ArgumentException("Dmin must contain three finite densities.", nameof(lockedDMin));
+            dmin = (double[])lockedDMin.Clone();
+        }
+        else
+        {
+            double[] tb;
+            if (frames.Count == 1)
+            {
+                // Preserve AutoFilmBaseFromRoll(useMode: true)'s single-frame order.
+                var f = frames[0];
+                var mask = f.BaseMask ?? f.Base;
+                var values = ReferenceEquals(mask, f.Base) ? null : f.Base;
+                // The endpoint detector auto-estimates the light-board/sprocket cut when the
+                // caller does not provide one. Dmin must use that same cut: without it the mode
+                // estimator is disabled and the code falls through to a 99.99th-percentile
+                // picture highlight, which is systematically too bright to be film base.
+                double? baseBoardCut = boardThreshold;
+                if (baseBoardCut is null)
+                {
+                    double estimated = Sprocket.EstimateSprocketThreshold(mask);
+                    if (estimated > 0.0 && estimated < Sprocket.NoBoard)
+                        baseBoardCut = estimated;
+                }
+                // Prefer actual border topology over a whole-frame histogram mode.  A bright
+                // wall or sky can form a perfectly strong mode, but it cannot satisfy the
+                // separated, edge-supported orange-rebate tests.
+                var pick = FilmBase.EstimateTBaseFromEdgeSliver(mask, values,
+                    allowNeutralCarrier, baseBoardCut);
+                evidence = FilmBaseEvidence.PhysicalEdgeSliver;
+                if (pick is null && !requirePhysicalBase)
+                {
+                    pick = FilmBase.EstimateTBaseByMode(mask, baseBoardCut, values);
+                    evidence = FilmBaseEvidence.PhysicalMode;
+                }
+                if (pick is null)
+                {
+                    if (requirePhysicalBase)
+                        throw new InvalidOperationException(
+                            "No reliable film-base border was found. Draw the sample box over visible bare film and use manual Dmin.");
+                    pick = FilmBase.EstimateTBaseFromRoll(new[] { mask }, baseBoardCut,
+                        values is null ? null : new[] { values });
+                    evidence = FilmBaseEvidence.ContentInference;
+                }
+                tb = pick;
+            }
+            else
+            {
+                baseDiagnostics = FilmBase.EstimateTBaseFromRollDetailed(
+                    frames.Select(f => f.BaseMask ?? f.Base).ToArray(), boardThreshold,
+                    frames.Select(f => f.Base).ToArray(), allowNeutralCarrier);
+                tb = baseDiagnostics.TBase;
+                measuredRollBase = tb;
+                evidence = baseDiagnostics.Evidence;
+            }
+            dmin = tb.Select(v => -Math.Log10(Math.Max(v, 1e-10))).ToArray();
+        }
+        // Original roll path uses the measured transmission directly; avoid a log/pow
+        // round trip there. Single-frame and locked-base paths reconstruct from Dmin.
+        var tbase = measuredRollBase ?? dmin.Select(v => Math.Pow(10.0, -v)).ToArray();
+        if (tbase.Any(v => !double.IsFinite(v) || v <= 0))
+            throw new ArgumentException("Dmin cannot be represented as positive transmittance.");
+        cancellationToken.ThrowIfCancellationRequested();
+        var images = frames.Select(f => f.Picture).ToArray();
+        var masks = frames.Select(f => f.PictureMask ?? f.Picture).ToArray();
+        HighlightEndpointEstimate? highlight = null;
+        double[] span;
+        // The roll detector deliberately uses a very small density tail and then reaches a
+        // chroma consensus across frames. A single frame has no such consensus: one coloured
+        // specular patch or blue sky pixel can become the channel endpoint for the whole image.
+        // Reuse the bounded single-frame estimator for this OFX case. It first looks for a
+        // sufficiently large, chroma-consistent highlight region and falls back to the existing
+        // 99.5th-percentile same-source estimator; Dmin remains unchanged.
+        if (stableSingleFrameHighlight && frames.Count == 1)
+        {
+            span = FilmBase.DetectNeutralHighlightFromFrame(
+                       masks[0], tbase, boardThreshold)
+                   ?? FilmBase.AutoWbHighFromRoll(masks, tbase, boardThreshold, images);
+        }
+        else
+        {
+            highlight = FilmBase.DetectDMaxPerChannelFromRollDetailed(
+                images, tbase, 90.0, masks, boardThreshold, protectIndependentChannelExtrema: true,
+                excludeDarkValley: excludeDarkValley);
+            cancellationToken.ThrowIfCancellationRequested();
+            span = highlight?.Density ?? FilmBase.AutoWbHighFromRoll(
+                masks, tbase, boardThreshold, images);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (span.Any(v => !double.IsFinite(v) || v <= 0))
+            throw new InvalidOperationException("No usable highlight span; retain previous calibration.");
+        // The legacy fallback can return its numerical ceiling for a fully opaque frame.
+        // Reject that candidate at the host boundary, without changing the shared estimator.
+        if (highlight is null && (span.Any(v => v >= DensityMath.DensityCeiling)
+            || span.Average() >= DensityMath.RealDensityCeiling))
+            throw new InvalidOperationException("Fallback found opaque/clamped data, not a usable highlight.");
+        var dmax = span.Select((v, c) => v + dmin[c]).ToArray();
+        cancellationToken.ThrowIfCancellationRequested();
+        return new(dmin, dmax, evidence, baseDiagnostics, highlight,
+            highlight is null, lockedDMin is not null);
+    }
+
+    private static void ValidatePair(ImageBuffer value, ImageBuffer? mask)
+    {
+        if (mask is null || ReferenceEquals(mask, value)) return;
+        ValidateImage(mask);
+        if (value.Width != mask.Width || value.Height != mask.Height)
+            throw new ArgumentException("Mask and value buffers must have identical dimensions.");
+    }
+
+    private static void ValidateImage(ImageBuffer image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (image.Width < 20 || image.Height < 20)
+            throw new ArgumentException("Analysis buffers must be at least 20 by 20 pixels.");
+        if (!double.IsFinite(image.SourceQuantisationStep) || image.SourceQuantisationStep < 0)
+            throw new ArgumentException("Invalid source quantisation step.");
+        if (image.Data.Any(v => !float.IsFinite(v) || v < 0))
+            throw new ArgumentException("Analysis requires finite nonnegative linear transmission.");
+    }
+}
