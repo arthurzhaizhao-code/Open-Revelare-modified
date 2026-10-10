@@ -27,7 +27,7 @@ cat > "$BUNDLE/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>Revelare Negative</string>
 <key>CFBundleExecutable</key><string>RevelareNegative.ofx</string>
 <key>CFBundlePackageType</key><string>BNDL</string>
-<key>CFBundleVersion</key><string>0.1.9</string>
+<key>CFBundleVersion</key><string>0.1.10</string>
 </dict></plist>
 PLIST
 codesign --force --sign - "$BUNDLE/Contents/MacOS/OpenRevelare.Calibration.Native.dylib"
@@ -44,6 +44,6 @@ ditto "$BUNDLE" "$PKGROOT/Library/OFX/Plugins/RevelareNegative.ofx.bundle"
 pkgbuild \
   --root "$PKGROOT" \
   --identifier org.openrevelare.negative.pkg \
-  --version 0.1.9 \
+  --version 0.1.10 \
   --install-location / \
   "$OUT/RevelareNegative-$RID.pkg"
