@@ -11,6 +11,7 @@ static float inputPixel[4]={.5f,.4f,.3f,1.f}, outputPixel[4]={};
 static int inputTag,outputTag,renderTag,effectTag;
 static std::string changedName="dmaxR";
 static int errors=0;
+static bool instanceAvailable=true;
 static OfxStatus getValue(OfxParamHandle h,double time,...) {
     va_list a;va_start(a,time);
     auto* v=reinterpret_cast<Value*>(h);
@@ -30,7 +31,7 @@ int main() {
     OfxPropertySuiteV1 property{};OfxImageEffectSuiteV1 effect{};OfxParameterSuiteV1 parameterSuite{};OfxMessageSuiteV1 message{};
     props=&property;effects=&effect;params=&parameterSuite;messages=&message;
     property.propGetPointer=[](OfxPropertySetHandle p,const char* name,int,void** v)->OfxStatus {
-        if(std::strcmp(name,kOfxPropInstanceData)==0)*v=&state;
+        if(std::strcmp(name,kOfxPropInstanceData)==0)*v=instanceAvailable?&state:nullptr;
         else *v=p==reinterpret_cast<OfxPropertySetHandle>(&inputTag)?inputPixel:outputPixel;
         return kOfxStatOK;
     };
@@ -63,6 +64,12 @@ int main() {
         state.dmin[c]=reinterpret_cast<OfxParamHandle>(&lo[c]);state.dmax[c]=reinterpret_cast<OfxParamHandle>(&hi[c]);state.slope[c]=reinterpret_cast<OfxParamHandle>(&gain[c]);state.shift[c]=reinterpret_cast<OfxParamHandle>(&shift[c]);state.gamma[c]=reinterpret_cast<OfxParamHandle>(&gamma[c]);
     }
     auto handle=reinterpret_cast<OfxImageEffectHandle>(&effectTag);auto args=reinterpret_cast<OfxPropertySetHandle>(&renderTag);
+    // Resolve can emit parameter notifications while restoring a node, before
+    // CreateInstance has published its instance data. This must be a no-op, not
+    // the host-visible failure that disables the OFX node.
+    instanceAvailable=false;
+    assert(entry(kOfxActionInstanceChanged,handle,args,nullptr)==kOfxStatOK);
+    instanceAvailable=true;
     assert(entry(kOfxImageEffectActionRender,handle,args,nullptr)==kOfxStatOK);
     assert(outputPixel[0]!=inputPixel[0]);
     // Drag across the calibrated Dmin, including equality. Every render succeeds.

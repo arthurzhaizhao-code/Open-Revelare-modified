@@ -67,6 +67,15 @@ Instance* instance(OfxImageEffectHandle effect) {
     if (!v) throw std::runtime_error("Missing effect instance.");
     return static_cast<Instance*>(v);
 }
+Instance* instanceOrNull(OfxImageEffectHandle effect) noexcept {
+    try {
+        OfxPropertySetHandle p{};
+        if(effects->getPropertySet(effect,&p)!=kOfxStatOK || !p)return nullptr;
+        void* v=nullptr;
+        if(props->propGetPointer(p,kOfxPropInstanceData,0,&v)!=kOfxStatOK)return nullptr;
+        return static_cast<Instance*>(v);
+    } catch(...) { return nullptr; }
+}
 double number(OfxParamHandle p, double time) { double v; check(params->paramGetValueAtTime(p,time,&v)); return v; }
 int integer(OfxParamHandle p, double time) { int v; check(params->paramGetValueAtTime(p,time,&v)); return v; }
 void updateLock(Instance& i, double time) {
@@ -263,8 +272,17 @@ OfxStatus create(OfxImageEffectHandle effect) {
         params->paramSetValue(i->neutralRoi[2],size);params->paramSetValue(i->neutralRoi[3],size);
     }
     OfxPropertySetHandle p{}; check(effects->getPropertySet(effect,&p));
-    updateLock(*i,0); updateEndpointControls(*i,0);
-    check(props->propSetPointer(p,kOfxPropInstanceData,0,i.get()));
+    // Resolve may emit InstanceChanged while parameter properties are updated
+    // during creation. Publish the instance before those updates so the callback
+    // cannot observe a half-created effect and disable the saved node.
+    Instance* raw=i.get();
+    check(props->propSetPointer(p,kOfxPropInstanceData,0,raw));
+    try {
+        updateLock(*raw,0); updateEndpointControls(*raw,0);
+    } catch(...) {
+        props->propSetPointer(p,kOfxPropInstanceData,0,nullptr);
+        throw;
+    }
     i.release(); return kOfxStatOK;
 }
 OfxStatus render(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
@@ -628,7 +646,11 @@ OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandl
     } catch(...) { return kOfxStatReplyDefault; }
 }
 OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
-    auto& i=*instance(effect);
+    Instance* current=instanceOrNull(effect);
+    // Hosts are allowed to notify parameter changes while restoring an instance.
+    // There is nothing to apply until CreateInstance has published our state.
+    if(!current)return kOfxStatOK;
+    auto& i=*current;
     const bool userEdited=stringProp(in,kOfxPropChangeReason)==kOfxChangeUserEdited;
     auto name=stringProp(in,kOfxPropName);double time;check(props->propGetDouble(in,kOfxPropTime,0,&time));
     if(name=="lockBase"){updateLock(i,time);return kOfxStatOK;}
@@ -689,7 +711,15 @@ OfxStatus entry(const char* action,const void* handle,OfxPropertySetHandle in,Of
         if(std::strcmp(action,kOfxActionDescribe)==0)return describe(effect);
         if(std::strcmp(action,kOfxImageEffectActionDescribeInContext)==0)return describeContext(effect);
         if(std::strcmp(action,kOfxActionCreateInstance)==0)return create(effect);
-        if(std::strcmp(action,kOfxActionDestroyInstance)==0){delete instance(effect);return kOfxStatOK;}
+        if(std::strcmp(action,kOfxActionDestroyInstance)==0) {
+            if(auto* i=instanceOrNull(effect)) {
+                OfxPropertySetHandle p{};
+                if(effects->getPropertySet(effect,&p)==kOfxStatOK)
+                    props->propSetPointer(p,kOfxPropInstanceData,0,nullptr);
+                delete i;
+            }
+            return kOfxStatOK;
+        }
         if(std::strcmp(action,kOfxImageEffectActionRender)==0)return render(effect,in);
         if(std::strcmp(action,kOfxActionInstanceChanged)==0)return changed(effect,in);
         return kOfxStatReplyDefault;
@@ -698,7 +728,7 @@ OfxStatus entry(const char* action,const void* handle,OfxPropertySetHandle in,Of
       catch(...) {return kOfxStatFailed;}
 }
 void setHost(OfxHost* h){host=h;}
-OfxPlugin plugin={kOfxImageEffectPluginApi,1,"org.openrevelare.negative.prototype",0,4,setHost,entry};
+OfxPlugin plugin={kOfxImageEffectPluginApi,1,"org.openrevelare.negative.prototype",0,5,setHost,entry};
 }
 extern "C" __attribute__((visibility("default"))) int OfxGetNumberOfPlugins(){return 1;}
 extern "C" __attribute__((visibility("default"))) OfxPlugin* OfxGetPlugin(int index){return index==0?&plugin:nullptr;}
