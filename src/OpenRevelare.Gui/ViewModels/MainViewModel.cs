@@ -2685,10 +2685,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             // (its luma is where the sprocket threshold was calibrated). Mirrors Python's valueImages.
             ImageBuffer? dec = Stage1Source(_previewLinear);
             ImageBuffer? values = ReferenceEquals(dec, _previewLinear) ? null : dec;
-            double[]? tb = useMode
-                ? FilmBase.EstimateTBaseByMode(_previewLinear, sprocketThreshold, values)
+            FilmBaseEstimate? detailed = useMode
+                ? FilmBase.EstimateTBaseFromRollDetailed(
+                    new[] { _previewLinear }, sprocketThreshold,
+                    values is null ? null : new[] { values },
+                    allowNeutralCarrier: Monochrome)
                 : null;
-            bool physicalCandidate = tb is not null;
+            double[]? tb = detailed?.TBase;
+            bool physicalCandidate = detailed is { Evidence: not FilmBaseEvidence.ContentInference };
             // Then the edge sliver: a scan with no board still often keeps a thin strip of bare
             // rebate, which is the real base but far too small for any percentile to find. Tried
             // before the tail estimator because when it answers at all it has identified an
@@ -2730,11 +2734,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 // already reports the action, and one frame cannot support the roll-style
                 // confidence wording. Keep the provisional message only while the roll pass is
                 // actually going to replace this first-frame answer with pooled evidence.
+                string source = detailed?.Evidence switch
+                {
+                    FilmBaseEvidence.PhysicalMode => Loc.T("灯板阈值内的密集片基峰"),
+                    FilmBaseEvidence.PhysicalEdgeSliver => Loc.T("连续边缘片基区域"),
+                    _ => Monochrome ? Loc.T("无色载体候选") : Loc.T("物理片基候选"),
+                };
                 FilmBaseText = broadcastToRoll
-                    ? Monochrome
-                        ? Loc.T("片基：当前帧无色载体候选 · 整卷分析完成后给出置信度")
-                        : Loc.T("片基：当前帧物理片基候选 · 整卷分析完成后给出置信度")
-                    : "";
+                    ? Loc.F($"片基：当前帧来自{source} · 整卷分析完成后给出置信度")
+                    : Loc.F($"片基：来自{source} · Dmin {DMinR:F3} / {DMinG:F3} / {DMinB:F3}");
                 StatusText = Loc.T("已自动检测片基") + (sprocketThreshold is null ? Loc.T("（无齿孔模式）") : Loc.T("与齿孔阈值"));
             }
             else

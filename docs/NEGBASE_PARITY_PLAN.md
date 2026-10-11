@@ -23,3 +23,18 @@ the same linear input produces recorded endpoint values and output pixels in bot
 4. Any automatic result must expose its evidence source, support and candidate region.
 5. Preserve the native OpenRevelare ROI tool; the abandoned OFX overlay is not a reference
    implementation.
+
+## `0023.raf` Dmin checkpoint
+
+The stored camera-native analysis buffer is 971×729. With the inset edge band widened to include
+copy-stand rebates, the spatial edge detector selects 6.36% of the frame, with 99.91% of those
+pixels inside the edge band, and estimates absolute Dmin as:
+
+```text
+automatic edge region: 0.05578 / 0.11644 / 0.56742
+manual right rebate:   0.05143 / 0.11222 / 0.56382
+absolute difference:   0.00435 / 0.00422 / 0.00360
+```
+
+This verifies the geometry fix on the reference frame. It does not establish NegBase's hidden
+thresholds, and it does not make a content-inference fallback a physical Dmin measurement.
