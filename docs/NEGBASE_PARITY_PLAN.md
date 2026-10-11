@@ -20,6 +20,12 @@ explicit target retain 1032 to preserve their saved appearance. It also exposed 
 in the first spatial Dmax candidate: a narrow, boundary-attached density-2.8 frame line on 0020 was
 chosen as white. Such line-shaped and maximum-density components are now excluded.
 
+The automatic detector and placement now use one stated standard together: it searches for a
+broad neutral picture-white region and maps that reference to 685. The 1000 option is retained for
+an explicit true-Dmax measurement; it is not silently substituted into the diffuse-white auto
+path. Automatic runs also clear prior RGB alignment and display adjustments so the same source
+cannot change merely because the user previously adjusted and reset it.
+
 ## Rules for parity work
 
 1. Record input colour domain, crop, Dmin, Dmax, target code, per-channel scale and output profile.

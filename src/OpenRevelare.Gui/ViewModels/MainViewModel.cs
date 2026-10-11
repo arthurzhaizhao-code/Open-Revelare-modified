@@ -3035,9 +3035,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _suppressRender = true;
         try
         {
-            // Neutral start: both level sliders are OFFSETS from the untouched endpoints, so
-            // neutral is 0 for each. The highlight endpoint needs no such reset — AutoDetectDMax
-            // overwrites all three channels of it outright.
+            // Automatic calibration must not depend on the edit history of the current frame.
+            // Reset the diffuse-white placement, manual RGB alignment and display corrections
+            // before measuring the provisional result. Geometry and repair settings stay intact.
+            ResetAutomaticBaseline();
+            // Both level sliders are OFFSETS from the untouched endpoints, so neutral is 0.
             // LEVELS ARE LEFT NEUTRAL — the display rendering already places both ends.
             // CineonToDisplay normalises the film base at code 95 to display black and rolls the
             // latitude above 685 off toward white, so the picture arrives with its endpoints
@@ -3048,7 +3050,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             // whose toe and shoulder are its look: a rendering that has placed its own ends should
             // not then be renormalised. The 自动色阶 button stays available for a scan that really
             // does need it.
-            Black = 0.0; White = 0.0;
             // Reuse the full-resolution board measurement made above. Measuring it again here
             // decoded the same three roll samples a second time before highlight detection even
             // began; on a 60 MP roll that was the longest part of the provisional pass and also
@@ -3395,12 +3396,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         double black = WbMath.BlackSliderToPoint(Black), white = WbMath.WhiteSliderToPoint(White);
         foreach (RollFrame f in Frames)
         {
+            // "Auto (roll)" is a reproducible baseline operation. Keeping a frame's previous
+            // display WB, exposure or curve made the same source produce a different automatic
+            // result depending on its edit history — exactly the first-pass-yellow / reset /
+            // second-pass-neutral sequence observed on 0018. Geometry is deliberately retained.
+            RollFrame.ResetScene(f.Params);
             f.Params.TBase = (double[])tb.Clone();
             // Roll-uniform: the endpoints were measured across the roll, so a single flat-lit
             // frame is not normalised on its own.
             f.Params.DMaxPerChannel = (double[])dmc.Clone();
             f.Params.DMinPerChannel = (double[])dmn.Clone();
             f.Params.HighlightTargetCode = HighlightTargetCode;
+            f.Params.RgbAlignShift = new[] { 0.0, 0.0, 0.0 };
+            f.Params.RgbAlignGain = new[] { 1.0, 1.0, 1.0 };
             f.Params.BlackPoint = black;
             f.Params.WhitePoint = white;
         }
@@ -3632,7 +3640,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             var r = candidate.Region;
             HighlightConfidenceText = Loc.F(
-                $"高光：空间中性候选 · {candidate.PixelCount} 像素（{candidate.AreaFraction:P2}）· 区域 x={r.X:P1}, y={r.Y:P1}, w={r.W:P1}, h={r.H:P1} · 通道密度差 {candidate.ChromaRange:F3}");
+                $"高光：空间中性候选 · {candidate.PixelCount} 像素（{candidate.AreaFraction:P2}）· 区域 x={r.X:P1}, y={r.Y:P1}, w={r.W:P1}, h={r.H:P1} · 归一化通道差 {candidate.ChromaRange:F3}");
         }
 
         StatusText = highlight is not null
@@ -3662,6 +3670,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         // clear the user's black/white offsets.
         var before = new SingleFrameAutoSnapshot(
             DMinPerChannel, DMaxPerChannel, Black, White,
+            HighlightTargetCode,
+            new[] { RgbAlignShiftR, RgbAlignShiftG, RgbAlignShiftB },
+            new[] { RgbAlignGainR, RgbAlignGainG, RgbAlignGainB },
+            Temp, Tint, ExposureEv, Contrast, Highlights, Shadows, Saturation,
+            new(_curveM), new(_curveR), new(_curveG), new(_curveB),
+            _curvePreserveHue, _curveHasEndpoints,
             FilmBaseText, HighlightConfidenceText,
             _filmBaseSampled, _calibrationDiagnosticsRollWide,
             _rollBaseCalibration, _rollHighlightCalibration, _rollUsedFallbackHighlight,
@@ -3674,6 +3688,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _suppressRender = true;
         try
         {
+            ResetAutomaticBaseline();
             committed = SingleFrameAutoTransaction.Run(
                 () => baseMeasured = AutoFilmBaseFromRoll(
                     cut, useMode: true, broadcastToRoll: false),
@@ -3713,6 +3728,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     private sealed record SingleFrameAutoSnapshot(
         double[] DMin, double[] DMax, double Black, double White,
+        double HighlightTargetCode, double[] RgbAlignShift, double[] RgbAlignGain,
+        double Temp, double Tint, double Exposure, double Contrast,
+        double Highlights, double Shadows, double Saturation,
+        List<(double, double)> CurveM, List<(double, double)> CurveR,
+        List<(double, double)> CurveG, List<(double, double)> CurveB,
+        bool CurvePreserveHue, bool CurveHasEndpoints,
         string FilmBaseText, string HighlightConfidenceText,
         bool FilmBaseSampled, bool CalibrationDiagnosticsRollWide,
         FilmBaseEstimate? RollBaseCalibration,
@@ -3725,6 +3746,20 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         DMaxPerChannel = snapshot.DMax;
         Black = snapshot.Black;
         White = snapshot.White;
+        HighlightTargetCode = snapshot.HighlightTargetCode;
+        RgbAlignShiftR = snapshot.RgbAlignShift[0];
+        RgbAlignShiftG = snapshot.RgbAlignShift[1];
+        RgbAlignShiftB = snapshot.RgbAlignShift[2];
+        RgbAlignGainR = snapshot.RgbAlignGain[0];
+        RgbAlignGainG = snapshot.RgbAlignGain[1];
+        RgbAlignGainB = snapshot.RgbAlignGain[2];
+        Temp = snapshot.Temp; Tint = snapshot.Tint; ExposureEv = snapshot.Exposure;
+        Contrast = snapshot.Contrast; Highlights = snapshot.Highlights;
+        Shadows = snapshot.Shadows; Saturation = snapshot.Saturation;
+        _curveM = new(snapshot.CurveM); _curveR = new(snapshot.CurveR);
+        _curveG = new(snapshot.CurveG); _curveB = new(snapshot.CurveB);
+        _curvePreserveHue = snapshot.CurvePreserveHue;
+        _curveHasEndpoints = snapshot.CurveHasEndpoints;
         _filmBaseSampled = snapshot.FilmBaseSampled;
         _calibrationDiagnosticsRollWide = snapshot.CalibrationDiagnosticsRollWide;
         _rollBaseCalibration = snapshot.RollBaseCalibration;
@@ -3733,6 +3768,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _lastHighlightMeasured = snapshot.LastHighlightMeasured;
         FilmBaseText = snapshot.FilmBaseText;
         HighlightConfidenceText = snapshot.HighlightConfidenceText;
+    }
+
+    /// <summary>Put automatic calibration at a history-independent processing baseline while
+    /// retaining geometry, crop, dust repair and lens calibration.</summary>
+    private void ResetAutomaticBaseline()
+    {
+        // The automatic candidate detector searches for a broad neutral picture-white region,
+        // so its matching Cineon placement is the diffuse-white reference at 685. True Dmax is
+        // available only when the user explicitly chooses that different measurement standard.
+        HighlightTargetCode = FrameParams.CineonDiffuseWhiteCode;
+        RgbAlignShiftR = RgbAlignShiftG = RgbAlignShiftB = 0.0;
+        RgbAlignGainR = RgbAlignGainG = RgbAlignGainB = 1.0;
+        Temp = Tint = ExposureEv = 0.0;
+        Black = White = Contrast = Highlights = Shadows = Saturation = 0.0;
+        _curveM = new(); _curveR = new(); _curveG = new(); _curveB = new();
+        _curvePreserveHue = true;
+        _curveHasEndpoints = false;
     }
 
     /// <summary>
@@ -4390,6 +4442,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         // 由自动标定或采样重新测量。
         DMinR = 0; DMinG = 0; DMinB = 0;
         DMaxR = DMaxG = DMaxB = FrameParams.OutputRange;
+        HighlightTargetCode = FrameParams.CineonDiffuseWhiteCode;
+        RgbAlignShiftR = RgbAlignShiftG = RgbAlignShiftB = 0.0;
+        RgbAlignGainR = RgbAlignGainG = RgbAlignGainB = 1.0;
         // Stage 2
         Temp = 0; Tint = 0; ExposureEv = 0;
         Black = 0; White = 0; Contrast = 0; Highlights = 0; Shadows = 0; Saturation = 0;

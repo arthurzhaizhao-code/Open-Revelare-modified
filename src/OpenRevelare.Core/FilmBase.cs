@@ -118,9 +118,43 @@ public static class FilmBase
             valid[p] = ok && (sprocketThreshold is not double cut || maskLuma <= cut);
         }
 
+        // A neutral negative does not have equal raw RGB density spans. The three dye layers,
+        // camera filters and copy light give each channel its own slope; comparing the raw
+        // densities directly therefore rejects real whites on the very frames whose channel
+        // slopes differ most. NegBase exposes that slope explicitly as `scale`.
+        //
+        // Estimate the frame's three ordinary high-density scales first, then rank and test
+        // connected regions in those normalised coordinates. A scene colour still departs from
+        // the frame-wide channel relationship, while a white patch is no longer required to
+        // have dR == dG == dB before the endpoint calibration that is meant to align them.
+        var channelPopulation = new[] { new double[n], new double[n], new double[n] };
+        int populationCount = 0;
+        for (int p = 0; p < n; p++)
+        {
+            if (!valid[p]) continue;
+            for (int c = 0; c < 3; c++) channelPopulation[c][populationCount] = density[p * 3 + c];
+            populationCount++;
+        }
+        if (populationCount == 0) return null;
+        var channelReference = new double[3];
+        for (int c = 0; c < 3; c++)
+        {
+            var values = new double[populationCount];
+            Array.Copy(channelPopulation[c], values, populationCount);
+            channelReference[c] = Math.Max(Percentile(values, 95.0), 1e-6);
+        }
+
+        var rankDensity = new double[n];
         double[] ranked = new double[n];
         int rankedCount = 0;
-        for (int p = 0; p < n; p++) if (valid[p]) ranked[rankedCount++] = meanDensity[p];
+        for (int p = 0; p < n; p++)
+        {
+            if (!valid[p]) continue;
+            rankDensity[p] = (density[p * 3] / channelReference[0]
+                            + density[p * 3 + 1] / channelReference[1]
+                            + density[p * 3 + 2] / channelReference[2]) / 3.0;
+            ranked[rankedCount++] = rankDensity[p];
+        }
         if (rankedCount == 0) return null;
         Array.Resize(ref ranked, rankedCount);
         double threshold = Percentile(ranked, 95.0);
@@ -129,10 +163,11 @@ public static class FilmBase
         var queue = new int[n];
         var component = new int[n];
         NeutralHighlightCandidate? best = null;
+        double bestScore = double.NegativeInfinity;
 
         for (int start = 0; start < n; start++)
         {
-            if (seen[start] || !valid[start] || meanDensity[start] < threshold) continue;
+            if (seen[start] || !valid[start] || rankDensity[start] < threshold) continue;
             int head = 0, tail = 0, count = 0;
             queue[tail++] = start;
             seen[start] = true;
@@ -157,10 +192,15 @@ public static class FilmBase
                 for (int c = 0; c < 3; c++) sum[c] += density[p * 3 + c];
             }
             double[] average = [sum[0] / count, sum[1] / count, sum[2] / count];
-            double channelMin = average.Min(), channelMax = average.Max();
-            double chromaRange = channelMax - channelMin;
+            var logNormalised = new double[3];
+            for (int c = 0; c < 3; c++)
+                logNormalised[c] = Math.Log(Math.Max(average[c] / channelReference[c], 1e-6));
+            double chromaRange = logNormalised.Max() - logNormalised.Min();
             if (chromaRange > maxChromaRange) continue;
             double candidateMean = average.Average();
+            double candidateScore = (average[0] / channelReference[0]
+                                   + average[1] / channelReference[1]
+                                   + average[2] / channelReference[2]) / 3.0;
             // A frame line, blocking card or the black surround can be a large, perfectly neutral
             // and very dense connected component. The first parity build therefore selected a
             // 1.6%-wide strip running down 59% of 0020.raf (mean density about 2.8) instead of a
@@ -175,7 +215,7 @@ public static class FilmBase
             bool touchesAnalysisBoundary = minX == 0 || minY == 0 || maxX == cw - 1 || maxY == ch - 1;
             if (touchesAnalysisBoundary || shortSideFraction < 0.025 || aspect > 8.0 ||
                 candidateMean > maxMeanDensity) continue;
-            if (best is not null && candidateMean <= best.MeanDensity) continue;
+            if (best is not null && candidateScore <= bestScore) continue;
             best = new NeutralHighlightCandidate(
                 average,
                 ((double)(minX + xi) / valueImage.Width,
@@ -183,12 +223,13 @@ public static class FilmBase
                  (double)(maxX - minX + 1) / valueImage.Width,
                  (double)(maxY - minY + 1) / valueImage.Height),
                 count, (double)count / n, chromaRange, candidateMean);
+            bestScore = candidateScore;
 
             void TryAdd(int x, int y)
             {
                 if ((uint)x >= (uint)cw || (uint)y >= (uint)ch) return;
                 int p = y * cw + x;
-                if (seen[p] || !valid[p] || meanDensity[p] < threshold) return;
+                if (seen[p] || !valid[p] || rankDensity[p] < threshold) return;
                 seen[p] = true;
                 queue[tail++] = p;
             }

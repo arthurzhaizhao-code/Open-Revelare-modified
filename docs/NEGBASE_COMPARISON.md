@@ -71,10 +71,11 @@ NegBase provides two explicit Dmax modes:
 The UI describes the first as the mode for a diffuse white reference such as paper or white
 clothing, and the second as the mode for actual maximum density such as a specular highlight.
 
-This validates code 685 when the measured sample is known to be diffuse white. The automatic default mode has not been established by the observations below. Neither the
-existence of these controls nor an automatically selected bright endpoint proves that it is a
-physical maximum-density measurement. The earlier recommendation to default to 1000 was an
-unverified design inference, not a verified NegBase behavior.
+Repeated user tests establish that NegBase's normal automatic workflow defaults to **90% white
+card / 685**. OpenRevelare therefore couples its automatic neutral picture-white detector to 685.
+True dmax / 1000 remains a separate explicit mode for a measured maximum-density or specular
+reference. Endpoint detection and Cineon placement must use the same standard; switching only the
+placement number while retaining the other mode's measurement assumption is invalid.
 
 ## Mathematical comparison with RevelareNegative
 
@@ -227,3 +228,11 @@ the 5% analysis inset, only 1.6% of the frame wide and 59.2% high. Its endpoint 
 film-frame/blocking-strip false positive, not evidence that NegBase uses a different inversion
 formula. The spatial candidate now rejects boundary-attached, line-shaped and maximum-density
 components before ranking the remaining neutral regions.
+
+Follow-up comparison of 0018, 0019 and 0023 found that OpenRevelare's stored density spans were
+much longer than NegBase's implied spans on 0018 and 0019, while 0023 was close. The old spatial
+test required a neutral candidate to have nearly equal raw RGB densities. That is physically
+incorrect before channel alignment: film dyes, camera filters and copy light give the channels
+different slopes. Candidate ranking and chroma rejection now operate after normalising each
+channel by its frame-level high-density scale. Coloured regions remain rejectable, while a neutral
+white region may have different raw density spans in R, G and B.

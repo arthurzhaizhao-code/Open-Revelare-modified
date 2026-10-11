@@ -34,9 +34,9 @@ public sealed partial class RollFrame : ObservableObject
     /// <summary>Per-frame parameters — the single source of truth for this frame's edit.</summary>
     public FrameParams Params { get; set; } = new()
     {
-        // The real-RAW NegBase checkpoint used diffuse-white placement for automatic results.
-        // Keep this in the GUI frame factory so low-level/core callers retain their identity
-        // default and legacy project files continue to restore their saved target unchanged.
+        // NegBase's normal automatic workflow searches for a picture-white / diffuse reference
+        // and places it at Cineon 685. True Dmax (1000) remains an explicit alternative for a
+        // measured maximum-density or specular reference; the two modes must not be mixed.
         HighlightTargetCode = FrameParams.CineonDiffuseWhiteCode,
     };
 
