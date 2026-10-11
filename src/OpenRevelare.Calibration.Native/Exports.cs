@@ -38,9 +38,13 @@ public static unsafe class Exports
             // as an opaque mask card can delete real subject matter (hair, clothing, furniture)
             // and collapse Dmax onto Dmin, producing an all-white render.  The standalone app's
             // full-frame/roll path keeps that mask; this bounded OFX ROI deliberately does not.
+            // Prefer the physical edge detector inside CalibrationEngine. If the
+            // current frame does not expose enough bare film, retain the standalone
+            // OpenRevelare content-estimation fallback rather than making an OFX
+            // button appear to do nothing. BaseEvidence reports which path won.
             var candidate = CalibrationEngine.Analyze([new CalibrationFrame(full, picture)], dmin,
                 excludeDarkValley: false, stableSingleFrameHighlight: true,
-                requirePhysicalBase: dmin is null);
+                requirePhysicalBase: false);
             for (int c = 0; c < 3; c++)
             {
                 result[c] = candidate.DMin[c];

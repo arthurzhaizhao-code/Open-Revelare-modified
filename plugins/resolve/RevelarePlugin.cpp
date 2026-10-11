@@ -57,6 +57,8 @@ struct Instance {
     bool viewerTransformValid=false;
     double viewerModel[16]{},viewerProjection[16]{};
     int viewerViewport[4]{};
+    std::array<double,3> rememberedDmin{};
+    bool hasRememberedDmin=false;
 };
 OfxParamHandle parameter(OfxParamSetHandle set, const char* name) {
     OfxParamHandle p{}; check(params->paramGetHandle(set, name, &p, nullptr)); return p;
@@ -78,25 +80,21 @@ Instance* instanceOrNull(OfxImageEffectHandle effect) noexcept {
 }
 double number(OfxParamHandle p, double time) { double v; check(params->paramGetValueAtTime(p,time,&v)); return v; }
 int integer(OfxParamHandle p, double time) { int v; check(params->paramGetValueAtTime(p,time,&v)); return v; }
+void rememberDmin(Instance& i,double time) {
+    for(int c=0;c<3;c++)i.rememberedDmin[c]=number(i.dmin[c],time);
+    i.hasRememberedDmin=true;
+}
 void updateLock(Instance& i, double time) {
-    int locked = integer(i.lock,time);
-    for (auto p : i.dmin) {
-        OfxPropertySetHandle properties{}; check(params->paramGetPropertySet(p,&properties));
-        check(props->propSetInt(properties,kOfxParamPropEnabled,0,!locked));
-    }
+    // Resolve 21 rejects runtime kOfxParamPropEnabled writes on some restored
+    // nodes ("bad handle"). Keep the lock in parameter values instead.
+    if(integer(i.lock,time))rememberDmin(i,time);
 }
 // UI bounds follow the calibrated channel, rather than an unrelated global range.
 // Render still validates independently: restored projects and undo can contain old values.
 void updateEndpointControls(Instance& i, double time) {
-    for (int c=0;c<3;c++) {
-        double lo=number(i.dmin[c],time), hi=number(i.dmax[c],time);
-        if (!std::isfinite(lo) || !std::isfinite(hi)) continue;
-        double span=std::max(hi-lo,0.001);
-        OfxPropertySetHandle p{}; check(params->paramGetPropertySet(i.dmax[c],&p));
-        check(props->propSetDouble(p,kOfxParamPropMin,0,lo+0.001));
-        check(props->propSetDouble(p,kOfxParamPropDisplayMin,0,lo+std::max(0.001,span*0.5)));
-        check(props->propSetDouble(p,kOfxParamPropDisplayMax,0,lo+span*2.0));
-    }
+    // Static descriptor bounds already cover the supported density range.
+    // Runtime property writes are not reliable in Resolve's OFX inspector.
+    (void)i;(void)time;
 }
 void validateStatus(Instance& i, double time) {
     double lo[3],hi[3],gain[3],shift[3],gamma[3];
@@ -198,6 +196,9 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
     check(props->propSetInt(p,kOfxParamPropDefault,0,0));
     props->propSetString(p,kOfxParamPropHint,0,"Input must be linear negative RGB. Output retains input primaries, Cineon-style Log. No Rec.709 conversion. Analyze enables inversion.");
     define(set,kOfxParamTypePushButton,"analyze","自动单张 / Analyze frame");
+    p=define(set,kOfxParamTypeString,"analysisStatus","标定状态 / Analysis status");
+    check(props->propSetString(p,kOfxParamPropDefault,0,"Ready. Analyze first tries visible film base, then falls back to content estimation."));
+    props->propSetInt(p,kOfxParamPropEnabled,0,0);
     p=define(set,kOfxParamTypeBoolean,"lockBase","锁定 Dmin / Lock film base");
     check(props->propSetInt(p,kOfxParamPropDefault,0,0));
     for(int c=0;c<3;c++) {
@@ -207,16 +208,15 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
         defineNumber(set,shiftNames[c],shiftNames[c],0.0,-256.0,256.0,1.0,1);
         defineNumber(set,gammaNames[c],gammaNames[c],1.0,0.20,5.0,0.001,4);
     }
-    // Analyze estimates the negative's density endpoint, so its safe default is the
-    // true-Dmax placement. Code 685 is only correct when the user deliberately
-    // identifies a diffuse-white sample rather than a density endpoint.
-    defineNumber(set,"whiteCode","Dmax 输出码值 / Cineon white placement",1000.0,685.0,1032.0,1.0,0);
+    // Negbase/Nami-style working default: place the estimated scene white at
+    // Cineon diffuse white. True Dmax remains an explicit optional preset.
+    defineNumber(set,"whiteCode","Dmax 输出码值 / Cineon white placement",685.0,685.0,1032.0,1.0,0);
     p=define(set,kOfxParamTypePushButton,"diffuseWhite","漫反射白 685 / Diffuse white 685");
     props->propSetString(p,kOfxParamPropHint,0,"Place a sampled diffuse white such as paper or white clothing at Cineon code 685.");
     p=define(set,kOfxParamTypePushButton,"trueDmax","真实 Dmax 1000 / True Dmax 1000");
     props->propSetString(p,kOfxParamPropHint,0,"Place a genuine maximum-density sample, such as a specular highlight in the positive, at Cineon code 1000.");
     p=define(set,kOfxParamTypeInteger,"endpointSchema","endpointSchema");
-    check(props->propSetInt(p,kOfxParamPropDefault,0,0));
+    check(props->propSetInt(p,kOfxParamPropDefault,0,2));
     check(props->propSetInt(p,kOfxParamPropSecret,0,1));
     define(set,kOfxParamTypePushButton,"resetTrim","重置通道调整 / Reset gain + shift + midtone");
     const double roiDefault[]={0.05,0.05,0.90,0.90};
@@ -239,9 +239,6 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
     p=define(set,kOfxParamTypeString,"neutralStatus","中性灰读数 / Neutral reading");
     check(props->propSetString(p,kOfxParamPropDefault,0,"Click a genuinely neutral area in the viewer, then sample."));
     props->propSetInt(p,kOfxParamPropEnabled,0,0);
-    p=define(set,kOfxParamTypeString,"analysisStatus","标定状态 / Analysis status");
-    check(props->propSetString(p,kOfxParamPropDefault,0,"Not calibrated. Linear input required; primaries are preserved."));
-    props->propSetInt(p,kOfxParamPropEnabled,0,0);
     return kOfxStatOK;
 }
 OfxStatus create(OfxImageEffectHandle effect) {
@@ -253,13 +250,12 @@ OfxStatus create(OfxImageEffectHandle effect) {
     i->neutralStatus=parameter(i->set,"neutralStatus");i->neutralTarget=parameter(i->set,"neutralTarget");i->neutralAbsolute=parameter(i->set,"neutralAbsolute");i->neutralOverlay=parameter(i->set,"neutralOverlay");i->neutralSize=parameter(i->set,"neutralSize");i->whiteCode=parameter(i->set,"whiteCode");i->endpointSchema=parameter(i->set,"endpointSchema");
     for(int c=0;c<3;c++) {i->dmin[c]=parameter(i->set,minNames[c]);i->dmax[c]=parameter(i->set,maxNames[c]);i->slope[c]=parameter(i->set,gainNames[c]);i->shift[c]=parameter(i->set,shiftNames[c]);i->gamma[c]=parameter(i->set,gammaNames[c]);}
     for(int c=0;c<4;c++){i->roi[c]=parameter(i->set,roiNames[c]);i->neutralRoi[c]=parameter(i->set,neutralRoiNames[c]);}
-    // v0 accidentally made diffuse white the default for Analyze. Repair each
-    // existing node once; after this marker is saved, an intentional 685 choice
-    // remains untouched on later opens.
-    if(integer(i->endpointSchema,0)<1) {
-        if(std::abs(number(i->whiteCode,0)-685.0)<0.5)
-            check(params->paramSetValue(i->whiteCode,1000.0));
-        check(params->paramSetValue(i->endpointSchema,1));
+    // v1 forced existing nodes from 685 to 1000. Undo that migration once. After
+    // schema 2, an explicit True Dmax choice remains untouched on later opens.
+    if(integer(i->endpointSchema,0)<2) {
+        if(std::abs(number(i->whiteCode,0)-1000.0)<0.5)
+            check(params->paramSetValue(i->whiteCode,685.0));
+        check(params->paramSetValue(i->endpointSchema,2));
     }
     // Repair the oversized drag region produced by the first overlay prototype.
     // Keep its centre so an upgraded project still points at the same subject.
@@ -368,7 +364,7 @@ void analyze(OfxImageEffectHandle effect,Instance& i,double time) {
         params->paramSetValue(i.lock,wasLocked);params->paramSetValue(i.enabled,wasEnabled);
         params->paramEditEnd(i.set);throw;
     }
-    check(params->paramEditEnd(i.set));updateLock(i,time);updateEndpointControls(i,time);
+    check(params->paramEditEnd(i.set));rememberDmin(i,time);updateEndpointControls(i,time);
     int flags=static_cast<int>(std::llround(result[7]));
     int baseEvidence=(flags>>2)&3;
     const char* baseText=baseEvidence==1?"film-base mode":
@@ -445,7 +441,7 @@ void sampleEndpoint(OfxImageEffectHandle effect,Instance& i,double time,bool fil
         }
         params->paramEditEnd(i.set);throw;
     }
-    updateLock(i,time);updateEndpointControls(i,time);
+    rememberDmin(i,time);updateEndpointControls(i,time);
     char text[320];std::snprintf(text,sizeof(text),
         filmBase?"Manual Dmin sampled from one co-sited box: R %.4f / G %.4f / B %.4f. Previous spans retained until Dmax is sampled."
                 :"Manual Dmax sampled from one co-sited box: R %.4f / G %.4f / B %.4f. Dmin remains locked.",
@@ -673,9 +669,15 @@ OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
         check(params->paramEditEnd(i.set));
         validateStatus(i,time);return kOfxStatOK;
     }
-    if(name=="analyze" && userEdited) {
+    if(name=="analyze") {
+        params->paramSetValue(i.status,"Analyzing current frame...");
+        std::fprintf(stderr,"Revelare Negative: Analyze frame requested.\n");
         try {analyze(effect,i,time);}
-        catch(const std::exception& e){params->paramSetValue(i.status,e.what());}
+        catch(const std::exception& e){
+            std::string message=std::string("Analysis failed: ")+e.what();
+            params->paramSetValue(i.status,message.c_str());
+            std::fprintf(stderr,"Revelare Negative: %s\n",message.c_str());
+        }
         // A rejected analysis leaves the existing grade intact; it is not a render failure.
         return kOfxStatOK;
     }
@@ -690,7 +692,17 @@ OfxStatus changed(OfxImageEffectHandle effect,OfxPropertySetHandle in) {
         return kOfxStatOK;
     }
     for(int c=0;c<3;c++) {
-        if(name==minNames[c]) {updateEndpointControls(i,time);validateStatus(i,time);return kOfxStatOK;}
+        if(name==minNames[c]) {
+            if(userEdited && integer(i.lock,time) && i.hasRememberedDmin) {
+                check(params->paramEditBegin(i.set,"Keep locked film base"));
+                for(int n=0;n<3;n++)check(params->paramSetValue(i.dmin[n],i.rememberedDmin[n]));
+                check(params->paramEditEnd(i.set));
+                params->paramSetValue(i.status,"Dmin is locked. Unlock film base before editing it manually.");
+                return kOfxStatOK;
+            }
+            if(userEdited)rememberDmin(i,time);
+            validateStatus(i,time);return kOfxStatOK;
+        }
         if(name==maxNames[c] || name==gainNames[c] || name==shiftNames[c] || name==gammaNames[c] || name=="enabled" || name=="whiteCode") {
             validateStatus(i,time);return kOfxStatOK;
         }
@@ -728,7 +740,7 @@ OfxStatus entry(const char* action,const void* handle,OfxPropertySetHandle in,Of
       catch(...) {return kOfxStatFailed;}
 }
 void setHost(OfxHost* h){host=h;}
-OfxPlugin plugin={kOfxImageEffectPluginApi,1,"org.openrevelare.negative.prototype",0,5,setHost,entry};
+OfxPlugin plugin={kOfxImageEffectPluginApi,1,"org.openrevelare.negative.prototype",0,6,setHost,entry};
 }
 extern "C" __attribute__((visibility("default"))) int OfxGetNumberOfPlugins(){return 1;}
 extern "C" __attribute__((visibility("default"))) OfxPlugin* OfxGetPlugin(int index){return index==0?&plugin:nullptr;}

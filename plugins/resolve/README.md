@@ -6,12 +6,12 @@ conversion is included. In the user's existing Rec.2020/Cineon → ARRI LogC3 CS
 chain, the upstream linear input must actually be Rec.2020. This plugin does not
 infer that from project settings.
 
-Automatic analysis estimates the negative's density endpoint, so it uses **True Dmax 1000**
-by default. Use **Diffuse white 685** only when the endpoint was deliberately sampled from a
-90% white card, paper, white clothing, or another diffuse-white reference. The numeric Cineon
-placement remains available for a custom target. Both presets can be used before or after
-analysis because they change output placement without changing the measured Dmin or Dmax.
-Existing nodes created by the short-lived 685-default build are migrated once to 1000.
+Automatic analysis uses **Diffuse white 685** by default, matching the working
+Negbase/Nami-style Cineon placement. **True Dmax 1000** remains an explicit option for a
+genuine maximum-density reference. The numeric Cineon placement remains available for a
+custom target. Both presets can be used before or after analysis because they change output
+placement without changing the measured Dmin or Dmax. Existing prototype nodes that were
+previously forced to 1000 are migrated back to 685 once; a later explicit choice is preserved.
 
 This prototype replaces the Nami node. It does NOT stack on top of Nami inversion.
 Enable inversion defaults off. Analyze frame takes the current upstream image,
@@ -30,9 +30,10 @@ Inspect channel independence BEFORE downstream CST/LUT. Final Rec.709 may mix RG
 
 ROI controls are normalized left, bottom, width, height. They restrict highlight
 analysis, NOT output geometry; base analysis retains the whole input to find film
-edges. Automatic Resolve analysis now requires a separated, orange, edge-supported
-film-base region. If none is visible it refuses to replace Dmin instead of treating picture
-content as film base. Input must be finite, nonnegative and opaque; place the plug-in before
+edges. Automatic Resolve analysis first prefers a separated, orange, edge-supported
+film-base region. If none is reliable it falls back to OpenRevelare's content estimate and
+reports that evidence in the Analysis status directly below the button. Input must be finite,
+nonnegative and opaque; place the plug-in before
 alpha-generating geometry effects. Source quantisation is unknown (0). The highlight detector
 also uses its default 5% inset inside the selected ROI.
 

@@ -53,8 +53,12 @@ int main(int argc, char** argv) {
     assert(analyze(rgb.data(),100,100,5,5,90,90,lo,result,error,sizeof(error))==0);
     for(int c=0;c<3;c++){assert(result[c]==lo[c]);assert(result[c+3]>result[c]);}
     assert(rgb==unchanged);
-    // Unlocked Resolve analysis now requires physical edge evidence instead of silently using
-    // scene highlights as film base.  Add one narrow, orange, separated rebate at the left edge.
+    // Analyze must remain actionable when no clean rebate is visible. The shared
+    // OpenRevelare engine may use a physical mode or content inference in that case.
+    assert(analyze(rgb.data(),100,100,5,5,90,90,nullptr,result,error,sizeof(error))==0);
+    for(int c=0;c<3;c++)assert(std::isfinite(result[c])&&result[c+3]>result[c]);
+    assert(((static_cast<int>(std::llround(result[7]))>>2)&3)>0);
+    // A narrow, orange, separated rebate at the edge remains preferred evidence.
     for(int y=0;y<100;y++)for(int x=0;x<4;x++) {
         const int p=(y*100+x)*3;rgb[p]=.95f;rgb[p+1]=.55f;rgb[p+2]=.25f;
     }
