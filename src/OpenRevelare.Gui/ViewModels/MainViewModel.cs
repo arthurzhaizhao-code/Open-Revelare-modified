@@ -3643,8 +3643,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             var r = candidate.Region;
             HighlightConfidenceText = Loc.F(
-                $"高光：空间中性候选 · {candidate.PixelCount} 像素（{candidate.AreaFraction:P2}）· " +
-                $"区域 x={r.X:P1}, y={r.Y:P1}, w={r.W:P1}, h={r.H:P1} · 通道密度差 {candidate.ChromaRange:F3}");
+                $"高光：空间中性候选 · {candidate.PixelCount} 像素（{candidate.AreaFraction:P2}）· 区域 x={r.X:P1}, y={r.Y:P1}, w={r.W:P1}, h={r.H:P1} · 通道密度差 {candidate.ChromaRange:F3}");
         }
 
         StatusText = highlight is not null
@@ -3874,8 +3873,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             var r = candidate.Region;
             HighlightConfidenceText = Loc.F(
-                $"高光：空间中性候选 · {candidate.PixelCount} 像素（{candidate.AreaFraction:P2}）· " +
-                $"区域 x={r.X:P1}, y={r.Y:P1}, w={r.W:P1}, h={r.H:P1} · 通道密度差 {candidate.ChromaRange:F3}");
+                $"高光：空间中性候选 · {candidate.PixelCount} 像素（{candidate.AreaFraction:P2}）· 区域 x={r.X:P1}, y={r.Y:P1}, w={r.W:P1}, h={r.H:P1} · 通道密度差 {candidate.ChromaRange:F3}");
         }
         StatusText = Loc.F($"自动白点 → 亮端 {DMaxLevel:F3}（逐通道 {DMaxR:F3} / {DMaxG:F3} / {DMaxB:F3}）");
     }
