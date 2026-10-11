@@ -31,6 +31,30 @@ public class CalibrationConfidenceTests
     }
 
     [Fact]
+    public void Inset_copy_stand_frame_is_still_physical_rebate()
+    {
+        const int width = 120, height = 100;
+        var frame = Solid(width, height, 0.050f, 0.045f, 0.040f);
+        for (int y = 12; y < 88; y++)
+        for (int x = 14; x < 106; x++)
+        {
+            bool rebate = x < 16 || x >= 104 || y < 14 || y >= 86;
+            if (!rebate) continue;
+            int i = (y * width + x) * 3;
+            frame.Data[i] = 0.24f;
+            frame.Data[i + 1] = 0.18f;
+            frame.Data[i + 2] = 0.070f;
+        }
+
+        double[]? measured = FilmBase.EstimateTBaseFromEdgeSliver(frame);
+
+        Assert.NotNull(measured);
+        Assert.InRange(measured![0], 0.239, 0.241);
+        Assert.InRange(measured[1], 0.179, 0.181);
+        Assert.InRange(measured[2], 0.069, 0.071);
+    }
+
+    [Fact]
     public void Neutral_edge_carrier_is_physical_only_when_monochrome_is_explicit()
     {
         ImageBuffer[] roll = Enumerable.Range(0, 8).Select(_ => NeutralEdgeCarrier()).ToArray();

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <!-- Compile the SAME sources: no copied estimators, decoder or GUI dependency. -->
+  <ItemGroup>
+    <Compile Include="../OpenRevelare.Core/FilmBase.cs" Link="Shared/FilmBase.cs" />
+    <Compile Include="../OpenRevelare.Core/ImageBuffer.cs" Link="Shared/ImageBuffer.cs" />
+    <Compile Include="../OpenRevelare.Core/NumpyStats.cs" Link="Shared/NumpyStats.cs" />
+    <Compile Include="../OpenRevelare.Core/Sprocket.cs" Link="Shared/Sprocket.cs" />
+    <Compile Include="../OpenRevelare.Core/ParallelSweep.cs" Link="Shared/ParallelSweep.cs" />
+    <Compile Include="../OpenRevelare.Core/CoreText.cs" Link="Shared/CoreText.cs" />
+    <Compile Include="../OpenRevelare.Core/DensityMath.cs" Link="Shared/DensityMath.cs" />
+  </ItemGroup>
+</Project>

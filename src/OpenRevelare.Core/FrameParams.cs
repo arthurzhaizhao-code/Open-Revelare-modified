@@ -107,7 +107,7 @@ public sealed class FrameParams
     /// 不变式：<see cref="RealDensityCeiling"/> &lt; <c>DensityCeiling</c>。两者的关系是被
     /// **声明**的，而不是靠 3.0 &lt; 10 碰巧成立。
     /// </summary>
-    public const double DensityCeiling = 4.0;
+    public const double DensityCeiling = DensityMath.DensityCeiling;
 
     /// <summary>
     /// 真实底片密度的上界——超过它的像素不是画面，是不透光的物件。
@@ -118,7 +118,7 @@ public sealed class FrameParams
     /// 曾经是 FilmBase 里两处各自写死的 <c>MaxRealDensity = 3.0</c>。同一个物理量在两个地方
     /// 各定义一次，就是等着有一天只改其中一个。
     /// </summary>
-    public const double RealDensityCeiling = 3.0;
+    public const double RealDensityCeiling = DensityMath.RealDensityCeiling;
 
     /// <summary>
     /// <c>-log10(T)</c> clamped at <see cref="DensityCeiling"/> — the one place a transmittance
@@ -129,11 +129,9 @@ public sealed class FrameParams
     /// whereas a near-zero T is an ordinary opaque pixel.
     /// </summary>
     public static double DensityOf(double transmittance) =>
-        -Math.Log10(Math.Max(transmittance, DensityFloorTransmittance));
+        DensityMath.DensityOf(transmittance);
 
-    /// <summary>The transmittance <see cref="DensityCeiling"/> corresponds to. Precomputed —
-    /// <see cref="DensityOf"/> runs per sample over multi-megapixel frames.</summary>
-    private static readonly double DensityFloorTransmittance = Math.Pow(10.0, -DensityCeiling);
+
 
     /// <summary>
     /// 亮端：每个通道读作白的密度（典型 1.8–2.4）。
