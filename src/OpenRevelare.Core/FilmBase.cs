@@ -34,6 +34,15 @@ public sealed record HighlightEndpointEstimate(
     bool ClippingRisk,
     bool QuantizationRisk);
 
+/// <summary>A spatially coherent neutral highlight selected from one frame.</summary>
+public sealed record NeutralHighlightCandidate(
+    double[] Density,
+    (double X, double Y, double W, double H) Region,
+    int PixelCount,
+    double AreaFraction,
+    double ChromaRange,
+    double MeanDensity);
+
 /// <summary>
 /// Film-base / D_max / white-balance sampling — port of negative/film_base.py.
 ///
@@ -50,6 +59,127 @@ public sealed record HighlightEndpointEstimate(
 public static class FilmBase
 {
     private const double Truncate = 4.0;
+
+    /// <summary>
+    /// Find a large connected, chroma-consistent high-density region in one frame. Controlled
+    /// NegBase probes showed that neutral 32×32 and 64×64 regions can control the automatic
+    /// endpoint while 8×8/16×16 regions and denser coloured blocks are rejected. This method
+    /// implements only that observed candidate-selection rule; the older percentile estimator
+    /// remains available as the fallback when no candidate qualifies.
+    /// </summary>
+    public static NeutralHighlightCandidate? DetectNeutralHighlightFromFrame(
+        ImageBuffer valueImage,
+        double[] tBase,
+        ImageBuffer? maskImage = null,
+        double? sprocketThreshold = null,
+        double edgeInset = 0.05,
+        double minAreaFraction = 0.001,
+        double maxChromaRange = 0.35)
+    {
+        if (valueImage.Width < 20 || valueImage.Height < 20 || tBase.Length != 3)
+            return null;
+        ImageBuffer mask = maskImage is not null
+                           && maskImage.Width == valueImage.Width
+                           && maskImage.Height == valueImage.Height
+            ? maskImage : valueImage;
+
+        int xi = RoundHalfEven(valueImage.Width * edgeInset);
+        int yi = RoundHalfEven(valueImage.Height * edgeInset);
+        int cw = valueImage.Width - 2 * xi;
+        int ch = valueImage.Height - 2 * yi;
+        if (cw < 4 || ch < 4) { xi = yi = 0; cw = valueImage.Width; ch = valueImage.Height; }
+
+        int n = checked(cw * ch);
+        var density = new double[n * 3];
+        var meanDensity = new double[n];
+        var valid = new bool[n];
+        double step = SourceStep(valueImage);
+        for (int y = 0; y < ch; y++)
+        for (int x = 0; x < cw; x++)
+        {
+            int p = y * cw + x;
+            int sourcePixel = (y + yi) * valueImage.Width + x + xi;
+            int source = sourcePixel * 3;
+            double sum = 0.0;
+            bool ok = true;
+            for (int c = 0; c < 3; c++)
+            {
+                double baseValue = Math.Max(tBase[c], 1e-10);
+                double transmission = valueImage.Data[source + c] / baseValue;
+                double d = FrameParams.DensityOf(transmission);
+                density[p * 3 + c] = d;
+                sum += d;
+                if (d >= FrameParams.RealDensityCeiling ||
+                    (step > 0 && !IsResolved(transmission, step / baseValue))) ok = false;
+            }
+            double maskLuma = ((double)mask.Data[source] + mask.Data[source + 1] + mask.Data[source + 2]) / 3.0;
+            meanDensity[p] = sum / 3.0;
+            valid[p] = ok && (sprocketThreshold is not double cut || maskLuma <= cut);
+        }
+
+        double[] ranked = new double[n];
+        int rankedCount = 0;
+        for (int p = 0; p < n; p++) if (valid[p]) ranked[rankedCount++] = meanDensity[p];
+        if (rankedCount == 0) return null;
+        Array.Resize(ref ranked, rankedCount);
+        double threshold = Percentile(ranked, 95.0);
+        int minArea = Math.Max(16, (int)Math.Ceiling(n * minAreaFraction));
+        var seen = new bool[n];
+        var queue = new int[n];
+        var component = new int[n];
+        NeutralHighlightCandidate? best = null;
+
+        for (int start = 0; start < n; start++)
+        {
+            if (seen[start] || !valid[start] || meanDensity[start] < threshold) continue;
+            int head = 0, tail = 0, count = 0;
+            queue[tail++] = start;
+            seen[start] = true;
+            while (head < tail)
+            {
+                int p = queue[head++];
+                component[count++] = p;
+                int px = p % cw, py = p / cw;
+                TryAdd(px - 1, py); TryAdd(px + 1, py);
+                TryAdd(px, py - 1); TryAdd(px, py + 1);
+            }
+            if (count < minArea) continue;
+
+            var sum = new double[3];
+            int minX = cw, minY = ch, maxX = 0, maxY = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int p = component[i];
+                int px = p % cw, py = p / cw;
+                minX = Math.Min(minX, px); minY = Math.Min(minY, py);
+                maxX = Math.Max(maxX, px); maxY = Math.Max(maxY, py);
+                for (int c = 0; c < 3; c++) sum[c] += density[p * 3 + c];
+            }
+            double[] average = [sum[0] / count, sum[1] / count, sum[2] / count];
+            double channelMin = average.Min(), channelMax = average.Max();
+            double chromaRange = channelMax - channelMin;
+            if (chromaRange > maxChromaRange) continue;
+            double candidateMean = average.Average();
+            if (best is not null && candidateMean <= best.MeanDensity) continue;
+            best = new NeutralHighlightCandidate(
+                average,
+                ((double)(minX + xi) / valueImage.Width,
+                 (double)(minY + yi) / valueImage.Height,
+                 (double)(maxX - minX + 1) / valueImage.Width,
+                 (double)(maxY - minY + 1) / valueImage.Height),
+                count, (double)count / n, chromaRange, candidateMean);
+
+            void TryAdd(int x, int y)
+            {
+                if ((uint)x >= (uint)cw || (uint)y >= (uint)ch) return;
+                int p = y * cw + x;
+                if (seen[p] || !valid[p] || meanDensity[p] < threshold) return;
+                seen[p] = true;
+                queue[tail++] = p;
+            }
+        }
+        return best;
+    }
 
     /// <summary>
     /// Film base as the brightest DENSE MODE of the frame's luma, rather than as a bright-tail

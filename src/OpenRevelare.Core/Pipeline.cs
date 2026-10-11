@@ -425,6 +425,10 @@ public static class Pipeline
         if (trackFill && (sprocketMask != null || cal.Rotation != 0.0))
             fill = MapFillThroughGeometry(sprocketMask, src.Width, src.Height, cal);
 
+        // Endpoint placement is independent of endpoint measurement: Dmin stays at code 95 while
+        // the measured Dmax is placed at diffuse white 685, true Dmax 1000, or a custom code.
+        CineonHighlightPlacement.ApplyToLinearPositive(result.Data, cal.HighlightTargetCode);
+
         // Manual channel alignment belongs to the Cineon signal, after the physical endpoints
         // have established Dmin/Dmax and before any display rendering or output-space matrix.
         // The helper round-trips Stage 1's linear carrier through Cineon so every existing output

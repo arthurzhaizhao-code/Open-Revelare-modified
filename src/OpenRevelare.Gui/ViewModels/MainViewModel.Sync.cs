@@ -180,6 +180,7 @@ public partial class MainViewModel
                 d.TBase = (double[])s.TBase.Clone();
                 d.DMinPerChannel = (double[])s.DMinPerChannel.Clone();
                 d.DMaxPerChannel = (double[])s.DMaxPerChannel.Clone();
+                d.HighlightTargetCode = s.HighlightTargetCode;
                 d.RgbAlignShift = (double[])s.RgbAlignShift.Clone();
                 d.RgbAlignGain = (double[])s.RgbAlignGain.Clone();
             }

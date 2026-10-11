@@ -363,6 +363,7 @@ public static class Project
             // ── 反相的六个自由度，就这两行 ──────────────────────────────────────
             ["d_min_per_channel"] = Arr(p.DMinPerChannel),
             ["d_max_per_channel"] = Arr(p.DMaxPerChannel),
+            ["highlight_target_code"] = p.HighlightTargetCode,
             ["rgb_align_shift"] = Arr(p.RgbAlignShift),
             ["rgb_align_gain"] = Arr(p.RgbAlignGain),
             // ── 以下为兼容键，全部写成中性值 ────────────────────────────────────
@@ -448,6 +449,9 @@ public static class Project
             // 两端，按文件写入时的 schema 迁移——见 MigrateHighlightEndpoint / MigrateShadowEndpoint。
             DMaxPerChannel = MigrateHighlightEndpoint(d),
             DMinPerChannel = MigrateShadowEndpoint(d),
+            // Projects written before endpoint placement existed mapped the measured endpoint to
+            // code 1032. Preserve that look; automatic's NegBase target remains unverified.
+            HighlightTargetCode = Dbl(d, "highlight_target_code", FrameParams.CineonWhiteCode),
             RgbAlignShift = Vec3(d, "rgb_align_shift", 0, 0, 0),
             RgbAlignGain = Vec3(d, "rgb_align_gain", 1, 1, 1),
             ChromaChannelScale = Vec3(d, "chroma_channel_scale", 1, 1, 1),

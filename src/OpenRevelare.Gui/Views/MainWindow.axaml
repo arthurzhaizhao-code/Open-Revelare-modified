@@ -1096,6 +1096,22 @@
                                                 </StackPanel>
                                             </Button>
                                         </Grid>
+                                        <TextBlock Classes="groupHint" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Text="{i18n:T '亮端落点独立于 Dmin / Dmax 测量。漫反射白或白纸选 685；框到真正最大密度、镜面高光时选 1000。'}" />
+                                        <Grid ColumnDefinitions="*,*">
+                                            <Button Grid.Column="0" Margin="0,0,3,0" HorizontalAlignment="Stretch"
+                                                    Click="OnDiffuseWhite685Click" IsEnabled="{Binding HasImage}"
+                                                    ToolTip.Tip="{i18n:T 'NegBase 的 90% white card 模式。只改变 Cineon 映射，不重新分析端点。'}">
+                                                <TextBlock Text="{i18n:T '漫反射白 685'}" VerticalAlignment="Center" />
+                                            </Button>
+                                            <Button Grid.Column="1" Margin="3,0,0,0" HorizontalAlignment="Stretch"
+                                                    Click="OnTrueDMax1000Click" IsEnabled="{Binding HasImage}"
+                                                    ToolTip.Tip="{i18n:T 'NegBase 的 True dmax 模式。只改变 Cineon 映射，不重新分析端点。'}">
+                                                <TextBlock Text="{i18n:T '真实 Dmax 1000'}" VerticalAlignment="Center" />
+                                            </Button>
+                                        </Grid>
+                                        <TextBlock Classes="groupHint" HorizontalAlignment="Right"
+                                                   Text="{Binding HighlightTargetText}" />
                                         <TextBlock Classes="groupHint" Text="{Binding HighlightConfidenceText}"
                                                    IsVisible="{Binding HighlightConfidenceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    TextWrapping="Wrap" />

@@ -77,6 +77,10 @@ public sealed class FrameParams
     /// <summary>Cineon 白端码值：用户框选为白的位置。</summary>
     public const double CineonWhiteCode = 1032.0;
 
+    /// <summary>NegBase's two named endpoint placements.</summary>
+    public const double CineonDiffuseWhiteCode = 685.0;
+    public const double CineonTrueDMaxCode = 1000.0;
+
     /// <summary>
     /// Cineon 的 18% 标准灰码值。灰卡采样「锚定标准灰」时把灰卡钉在这里。
     ///
@@ -152,6 +156,13 @@ public sealed class FrameParams
     /// 而不是恒为 0 的原因。三通道之差即暗部色偏。
     /// </summary>
     public double[] DMinPerChannel { get; set; } = { 0.0, 0.0, 0.0 };
+
+    /// <summary>
+    /// Cineon code assigned to the measured highlight endpoint. The compatibility default stays
+    /// at 1032 because black-box evidence has not established which NegBase mode automatic uses;
+    /// the UI exposes its verified 685 and 1000 choices explicitly.
+    /// </summary>
+    public double HighlightTargetCode { get; set; } = CineonWhiteCode;
 
     /// <summary>
     /// Independent Cineon-signal RGB alignment after the measured endpoints and before display
@@ -546,6 +557,7 @@ public sealed class FrameParams
         TBase = (double[])TBase.Clone(),
         DMaxPerChannel = (double[])DMaxPerChannel.Clone(),
         DMinPerChannel = (double[])DMinPerChannel.Clone(),
+        HighlightTargetCode = HighlightTargetCode,
         RgbAlignShift = (double[])RgbAlignShift.Clone(),
         RgbAlignGain = (double[])RgbAlignGain.Clone(),
         ChromaChannelScale = (double[])ChromaChannelScale.Clone(),
@@ -602,6 +614,10 @@ public sealed class FrameParams
         Require3(RgbAlignGain, nameof(RgbAlignGain));
         Require3(DMinPerChannel, nameof(DMinPerChannel));
         Require3(ChromaChannelScale, nameof(ChromaChannelScale));
+
+        if (!(HighlightTargetCode > CineonBlackCode && HighlightTargetCode <= CineonWhiteCode))
+            throw new ArgumentOutOfRangeException(nameof(HighlightTargetCode), HighlightTargetCode,
+                $"highlight target must be inside ({CineonBlackCode}, {CineonWhiteCode}]");
 
         foreach (var v in TBase)
             if (v <= 0) throw new ArgumentException($"TBase values must be positive, got [{string.Join(',', TBase)}]");

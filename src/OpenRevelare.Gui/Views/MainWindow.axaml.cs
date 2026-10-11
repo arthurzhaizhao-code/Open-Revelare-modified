@@ -182,6 +182,12 @@ public partial class MainWindow : Window
     private void OnResetRgbAlignmentClick(object? sender, RoutedEventArgs e)
         => Vm?.ResetRgbAlignment();
 
+    private void OnDiffuseWhite685Click(object? sender, RoutedEventArgs e)
+        => Vm?.UseDiffuseWhitePlacement();
+
+    private void OnTrueDMax1000Click(object? sender, RoutedEventArgs e)
+        => Vm?.UseTrueDMaxPlacement();
+
     /// <summary>
     /// First-ever launch: show the onboarding once (persisted by a marker file).
     ///

@@ -1240,6 +1240,27 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     partial void OnDMaxGChanged(double value) { InvalidateHighlightEndpointDiagnostics(); SyncScalarsFromEndpoints(); ScheduleRender(); }
     partial void OnDMaxBChanged(double value) { InvalidateHighlightEndpointDiagnostics(); SyncScalarsFromEndpoints(); ScheduleRender(); }
 
+    /// <summary>Where the measured highlight endpoint lands in the Cineon signal.</summary>
+    [ObservableProperty] private double _highlightTargetCode = FrameParams.CineonWhiteCode;
+    public string HighlightTargetText => Loc.F($"当前 Cineon {HighlightTargetCode:F0}");
+    partial void OnHighlightTargetCodeChanged(double value)
+    {
+        OnPropertyChanged(nameof(HighlightTargetText));
+        ScheduleRender();
+    }
+
+    public void UseDiffuseWhitePlacement()
+    {
+        HighlightTargetCode = FrameParams.CineonDiffuseWhiteCode;
+        StatusText = Loc.T("亮端映射：90% 漫反射白 → Cineon 685；Dmin 与实测 Dmax 保持不变");
+    }
+
+    public void UseTrueDMaxPlacement()
+    {
+        HighlightTargetCode = FrameParams.CineonTrueDMaxCode;
+        StatusText = Loc.T("亮端映射：真实 Dmax → Cineon 1000；Dmin 与实测 Dmax 保持不变");
+    }
+
     // Final-output RGB alignment. These are intentionally independent of D_min/D_max: automatic
     // calibration remains an inspectable starting point, while the manual trim is applied only
     // after all matrices so one slider cannot move another parade channel.
@@ -2091,6 +2112,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         TBase = TBaseArr(),
         DMinPerChannel = DMinPerChannel,
         DMaxPerChannel = DMaxPerChannel,
+        HighlightTargetCode = HighlightTargetCode,
         RgbAlignShift = new[] { RgbAlignShiftR, RgbAlignShiftG, RgbAlignShiftB },
         RgbAlignGain = new[] { RgbAlignGainR, RgbAlignGainG, RgbAlignGainB },
         // Stage 2 — 色温/色调 → geomean-1 gains; 黑/白场 → levels
@@ -3389,6 +3411,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             // frame is not normalised on its own.
             f.Params.DMaxPerChannel = (double[])dmc.Clone();
             f.Params.DMinPerChannel = (double[])dmn.Clone();
+            f.Params.HighlightTargetCode = HighlightTargetCode;
             f.Params.BlackPoint = black;
             f.Params.WhitePoint = white;
         }
@@ -3576,13 +3599,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         double[] tBase = TBaseFromDensity(dMin);
         _calibrationDiagnosticsRollWide = false;
         HighlightEndpointEstimate? highlightEstimate = null;
+        NeutralHighlightCandidate? neutralCandidate = null;
         double[]? highlight = null;
         if (mask is not null)
         {
-            highlightEstimate = FilmBase.DetectDMaxPerChannelFromRollDetailed(
-                new[] { src }, tBase, 90.0, new[] { mask }, cut,
-                protectIndependentChannelExtrema: true);
-            highlight = highlightEstimate?.Density;
+            // NegBase parity path: prefer one sufficiently large, connected, chroma-consistent
+            // physical region. It keeps all three channels co-sited and rejects tiny speculars
+            // and denser coloured objects observed to be ignored by NegBase.
+            neutralCandidate = FilmBase.DetectNeutralHighlightFromFrame(src, tBase, mask, cut);
+            highlight = neutralCandidate?.Density;
+
+            if (highlight is null)
+            {
+                highlightEstimate = FilmBase.DetectDMaxPerChannelFromRollDetailed(
+                    new[] { src }, tBase, 90.0, new[] { mask }, cut,
+                    protectIndependentChannelExtrema: true);
+                highlight = highlightEstimate?.Density;
+            }
 
             // Fallback: the densest-highlight solve. It answers from the same masked pixels but
             // reduces them differently, so it still produces a triplet where the percentile
@@ -3606,6 +3639,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             highlightEstimate,
             usedFallback: highlightEstimate is null && highlight is not null,
             rollWide: false);
+        if (neutralCandidate is { } candidate)
+        {
+            var r = candidate.Region;
+            HighlightConfidenceText = Loc.F(
+                $"高光：空间中性候选 · {candidate.PixelCount} 像素（{candidate.AreaFraction:P2}）· " +
+                $"区域 x={r.X:P1}, y={r.Y:P1}, w={r.W:P1}, h={r.H:P1} · 通道密度差 {candidate.ChromaRange:F3}");
+        }
 
         StatusText = highlight is not null
             ? Loc.F($"自动高光 → 亮端 {DMaxLevel:F3}（逐通道 {DMaxR:F3} / {DMaxG:F3} / {DMaxB:F3}）")
@@ -3798,11 +3838,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         // 它弃权时才回退到最浓高光解。此前这里只有后者，于是三条「自动白端」路径在同一张片子
         // 上可能给出两个不同的答案。
         double[]? highlight = null;
+        NeutralHighlightCandidate? neutralCandidate = null;
         try
         {
-            highlight = FilmBase.DetectDMaxPerChannelFromRoll(
-                new[] { val }, tBase, 90.0, new[] { raw }, cut,
-                protectIndependentChannelExtrema: true);
+            neutralCandidate = FilmBase.DetectNeutralHighlightFromFrame(val, tBase, raw, cut);
+            highlight = neutralCandidate?.Density;
+            if (highlight is null)
+                highlight = FilmBase.DetectDMaxPerChannelFromRoll(
+                    new[] { val }, tBase, 90.0, new[] { raw }, cut,
+                    protectIndependentChannelExtrema: true);
         }
         catch { /* 逐通道端点弃权——下面的回退还有机会 */ }
 
@@ -3826,6 +3870,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         DMaxPerChannel = AddDMin(highlight, dMin);
+        if (neutralCandidate is { } candidate)
+        {
+            var r = candidate.Region;
+            HighlightConfidenceText = Loc.F(
+                $"高光：空间中性候选 · {candidate.PixelCount} 像素（{candidate.AreaFraction:P2}）· " +
+                $"区域 x={r.X:P1}, y={r.Y:P1}, w={r.W:P1}, h={r.H:P1} · 通道密度差 {candidate.ChromaRange:F3}");
+        }
         StatusText = Loc.F($"自动白点 → 亮端 {DMaxLevel:F3}（逐通道 {DMaxR:F3} / {DMaxG:F3} / {DMaxB:F3}）");
     }
 
@@ -3859,6 +3910,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         // be what the render uses; everything else here matches BuildParams, because the net judges
         // a rendered positive and that render has to be the one the user is looking at.
         DMaxPerChannel = (double[])highlight.Clone(),
+        HighlightTargetCode = HighlightTargetCode,
         DistortionK1 = DistortionK1, VignetteAmount = VignetteAmount, VignetteFalloff = VignetteFalloff,
         LccFlatField = LccEnabled && LccAvailable ? _lccFlatField : null,
         // Path A decoupling — MUST match BuildParams. The net judges a rendered positive and its
