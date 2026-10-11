@@ -1,4 +1,5 @@
 using OpenRevelare.Core;
+using OpenRevelare.Gui.Models;
 using Xunit;
 
 namespace OpenRevelare.Tests;
@@ -6,6 +7,14 @@ namespace OpenRevelare.Tests;
 public class NegBaseParityTests
 {
     private static float T(double density) => (float)Math.Pow(10.0, -density);
+
+    [Fact]
+    public void New_gui_frame_uses_negbase_diffuse_white_target_without_changing_core_default()
+    {
+        Assert.Equal(FrameParams.CineonWhiteCode, new FrameParams().HighlightTargetCode);
+        Assert.Equal(FrameParams.CineonDiffuseWhiteCode,
+            new RollFrame("/tmp/new-negative.raf").Params.HighlightTargetCode);
+    }
 
     [Fact]
     public void Diffuse_white_placement_keeps_base_at_95_and_places_endpoint_at_685()
@@ -57,6 +66,43 @@ public class NegBaseParityTests
 
         Assert.True(candidate is null || candidate.MeanDensity < 1.0,
             $"coloured block should not control the endpoint, got {candidate?.MeanDensity:F3}");
+    }
+
+    [Fact]
+    public void Narrow_neutral_frame_line_is_not_a_white_reference()
+    {
+        ImageBuffer image = GradientFrame(32, coloured: false);
+        for (int y = 26; y < 486; y++)
+        for (int x = 0; x < 8; x++)
+        {
+            int i = (y * image.Width + x) * 3;
+            image.Data[i] = image.Data[i + 1] = image.Data[i + 2] = T(2.8);
+        }
+
+        NeutralHighlightCandidate? candidate = FilmBase.DetectNeutralHighlightFromFrame(
+            image, [1.0, 1.0, 1.0], edgeInset: 0.0);
+
+        Assert.NotNull(candidate);
+        Assert.InRange(candidate!.MeanDensity, 1.39, 1.41);
+        Assert.True(candidate.Region.W > 0.05 && candidate.Region.H > 0.05);
+    }
+
+    [Fact]
+    public void Overdense_neutral_block_is_not_a_diffuse_white_reference()
+    {
+        ImageBuffer image = GradientFrame(32, coloured: false);
+        for (int y = 100; y < 180; y++)
+        for (int x = 100; x < 180; x++)
+        {
+            int i = (y * image.Width + x) * 3;
+            image.Data[i] = image.Data[i + 1] = image.Data[i + 2] = T(2.8);
+        }
+
+        NeutralHighlightCandidate? candidate = FilmBase.DetectNeutralHighlightFromFrame(
+            image, [1.0, 1.0, 1.0], edgeInset: 0.0);
+
+        Assert.NotNull(candidate);
+        Assert.InRange(candidate!.MeanDensity, 1.39, 1.41);
     }
 
     private static double Code(float linear) =>

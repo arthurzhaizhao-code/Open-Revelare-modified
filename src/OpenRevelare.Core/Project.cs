@@ -450,7 +450,8 @@ public static class Project
             DMaxPerChannel = MigrateHighlightEndpoint(d),
             DMinPerChannel = MigrateShadowEndpoint(d),
             // Projects written before endpoint placement existed mapped the measured endpoint to
-            // code 1032. Preserve that look; automatic's NegBase target remains unverified.
+            // code 1032. Preserve that look even though newly imported frames now follow the
+            // measured NegBase test workflow and start at diffuse-white code 685.
             HighlightTargetCode = Dbl(d, "highlight_target_code", FrameParams.CineonWhiteCode),
             RgbAlignShift = Vec3(d, "rgb_align_shift", 0, 0, 0),
             RgbAlignGain = Vec3(d, "rgb_align_gain", 1, 1, 1),

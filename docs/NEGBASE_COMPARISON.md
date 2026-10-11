@@ -204,3 +204,26 @@ This is evidence for a minimum-area, same-source, chroma-consistent candidate, f
 density choice. It is not evidence for a fixed 685 or 1000 placement. The Resolve single-frame
 path now has a guarded experimental candidate detector with the existing percentile estimator as
 fallback; it has not yet been packaged or installed.
+
+## Seven-frame real-RAW checkpoint — 2026-10-11
+
+The same seven Fujifilm GFX100S RAF files were re-analysed in the installed NegBase 1.3.1 build.
+Its active preference was `dmaxTarget = 685`, so these results cannot be compared with an
+OpenRevelare render whose measured endpoint is placed at 1000 or 1032. NegBase reported:
+
+| RAF | scale R/G/B | displayed dmin R/G/B | displayed dmax R/G/B |
+|---|---|---|---|
+| 0017 | 2.0077 / 1.5497 / 1.2097 | 1.0223 / 0.7338 / 0.4017 | 0.2404 / 0.1125 / 0.0364 |
+| 0018 | 0.7842 / 0.8628 / 1.0765 | 0.8650 / 0.5299 / 0.2575 | 0.0213 / 0.0183 / 0.0173 |
+| 0019 | 1.8132 / 1.5182 / 1.1909 | 1.0720 / 0.6804 / 0.3579 | 0.2158 / 0.1004 / 0.0312 |
+| 0020 | 1.6914 / 1.4957 / 1.1699 | 1.4216 / 0.8693 / 0.5502 | 0.2551 / 0.1246 / 0.0459 |
+| 0021 | 0.6975 / 0.7367 / 0.8347 | 1.3711 / 0.9230 / 0.5469 | 0.0213 / 0.0179 / 0.0168 |
+| 0022 | 1.6224 / 1.4327 / 1.0997 | 1.4406 / 0.8669 / 0.5340 | 0.2403 / 0.1140 / 0.0380 |
+| 0023 | 1.7250 / 1.4880 / 1.1061 | 1.4210 / 0.8676 / 0.5525 | 0.2636 / 0.1231 / 0.0399 |
+
+The previous OpenRevelare parity build selected, on 0020, a neutral component beginning exactly at
+the 5% analysis inset, only 1.6% of the frame wide and 59.2% high. Its endpoint density was about
+2.8, while NegBase's displayed endpoint implies a much shorter picture-reference span. This is a
+film-frame/blocking-strip false positive, not evidence that NegBase uses a different inversion
+formula. The spatial candidate now rejects boundary-attached, line-shaped and maximum-density
+components before ranking the remaining neutral regions.

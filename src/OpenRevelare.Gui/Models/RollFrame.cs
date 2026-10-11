@@ -32,7 +32,13 @@ public sealed partial class RollFrame : ObservableObject
     public void RefreshText() => OnPropertyChanged(nameof(Label));
 
     /// <summary>Per-frame parameters — the single source of truth for this frame's edit.</summary>
-    public FrameParams Params { get; set; } = new();
+    public FrameParams Params { get; set; } = new()
+    {
+        // The real-RAW NegBase checkpoint used diffuse-white placement for automatic results.
+        // Keep this in the GUI frame factory so low-level/core callers retain their identity
+        // default and legacy project files continue to restore their saved target unchanged.
+        HighlightTargetCode = FrameParams.CineonDiffuseWhiteCode,
+    };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsPending))]

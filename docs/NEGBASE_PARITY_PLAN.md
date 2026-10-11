@@ -14,6 +14,12 @@ the same linear input produces recorded endpoint values and output pixels in bot
 | Roll analysis | Exact aggregation across frames is unknown | Not yet isolated | Existing confidence-weighted roll estimator retained | Repeat one controlled frame across a synthetic roll and vary one frame at a time |
 | Scopes | RGB parade and vectorscope are pre-display tools | UI observation | YRGB, skin-tone vectorscope, 0–1023 scale, enlarged window implemented | Compare values using the same synthetic ramps |
 
+The 2026-10-11 seven-frame RAF checkpoint established that the active NegBase automatic workflow
+used Cineon target 685. New OpenRevelare frames therefore start at 685; legacy projects without an
+explicit target retain 1032 to preserve their saved appearance. It also exposed a false positive
+in the first spatial Dmax candidate: a narrow, boundary-attached density-2.8 frame line on 0020 was
+chosen as white. Such line-shaped and maximum-density components are now excluded.
+
 ## Rules for parity work
 
 1. Record input colour domain, crop, Dmin, Dmax, target code, per-channel scale and output profile.

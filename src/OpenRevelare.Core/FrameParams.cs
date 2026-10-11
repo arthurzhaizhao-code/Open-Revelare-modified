@@ -158,9 +158,9 @@ public sealed class FrameParams
     public double[] DMinPerChannel { get; set; } = { 0.0, 0.0, 0.0 };
 
     /// <summary>
-    /// Cineon code assigned to the measured highlight endpoint. The compatibility default stays
-    /// at 1032 because black-box evidence has not established which NegBase mode automatic uses;
-    /// the UI exposes its verified 685 and 1000 choices explicitly.
+    /// Cineon code assigned to the measured highlight endpoint. Core callers retain the legacy
+    /// identity default at 1032; the GUI's new-frame factory starts at NegBase's measured 685
+    /// workflow while loaded project files restore their explicit saved value.
     /// </summary>
     public double HighlightTargetCode { get; set; } = CineonWhiteCode;
 

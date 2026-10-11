@@ -1242,7 +1242,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     partial void OnDMaxBChanged(double value) { InvalidateHighlightEndpointDiagnostics(); SyncScalarsFromEndpoints(); ScheduleRender(); }
 
     /// <summary>Where the measured highlight endpoint lands in the Cineon signal.</summary>
-    [ObservableProperty] private double _highlightTargetCode = FrameParams.CineonWhiteCode;
+    [ObservableProperty] private double _highlightTargetCode = FrameParams.CineonDiffuseWhiteCode;
     public string HighlightTargetText => Loc.F($"当前 Cineon {HighlightTargetCode:F0}");
     partial void OnHighlightTargetCodeChanged(double value)
     {

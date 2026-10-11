@@ -74,7 +74,8 @@ public static class FilmBase
         double? sprocketThreshold = null,
         double edgeInset = 0.05,
         double minAreaFraction = 0.001,
-        double maxChromaRange = 0.35)
+        double maxChromaRange = 0.35,
+        double maxMeanDensity = 2.0)
     {
         if (valueImage.Width < 20 || valueImage.Height < 20 || tBase.Length != 3)
             return null;
@@ -160,6 +161,20 @@ public static class FilmBase
             double chromaRange = channelMax - channelMin;
             if (chromaRange > maxChromaRange) continue;
             double candidateMean = average.Average();
+            // A frame line, blocking card or the black surround can be a large, perfectly neutral
+            // and very dense connected component. The first parity build therefore selected a
+            // 1.6%-wide strip running down 59% of 0020.raf (mean density about 2.8) instead of a
+            // photographed white reference. NegBase selected a roughly 0.75-1.08 density span on
+            // the same frame. A usable automatic white candidate must be a two-dimensional region
+            // inside the picture, not a boundary-attached line, and must stay below physical
+            // maximum-density territory. The explicit True-Dmax button changes placement only;
+            // automatic still measures the same picture reference.
+            int boxW = maxX - minX + 1, boxH = maxY - minY + 1;
+            double shortSideFraction = Math.Min((double)boxW / cw, (double)boxH / ch);
+            double aspect = Math.Max((double)boxW / boxH, (double)boxH / boxW);
+            bool touchesAnalysisBoundary = minX == 0 || minY == 0 || maxX == cw - 1 || maxY == ch - 1;
+            if (touchesAnalysisBoundary || shortSideFraction < 0.025 || aspect > 8.0 ||
+                candidateMean > maxMeanDensity) continue;
             if (best is not null && candidateMean <= best.MeanDensity) continue;
             best = new NeutralHighlightCandidate(
                 average,
