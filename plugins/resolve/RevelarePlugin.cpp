@@ -19,7 +19,6 @@
 
 #define GL_SILENCE_DEPRECATION
 #include <OpenGL/gl.h>
-#include <OpenGL/glu.h>
 
 namespace {
 OfxHost* host = nullptr;
@@ -48,15 +47,9 @@ struct Instance {
     OfxParamHandle enabled{}, lock{}, status{}, neutralStatus{}, neutralTarget{}, neutralAbsolute{}, neutralOverlay{}, neutralSize{}, whiteCode{}, endpointSchema{};
     std::array<OfxParamHandle, 3> dmin{}, dmax{}, slope{}, shift{}, gamma{};
     std::array<OfxParamHandle, 4> roi{}, neutralRoi{};
-    bool neutralDragging=false,neutralDragMoved=false,hoverValid=false;
+    bool neutralDragging=false,neutralDragMoved=false,hoverValid=false,sampleCommitted=false;
     double dragStartX=0.0,dragStartY=0.0,dragCurrentX=0.0,dragCurrentY=0.0;
     double hoverX=0.0,hoverY=0.0;
-    // Resolve's canonical pen coordinate can disagree with the projection used to
-    // draw an overlay after viewer pan/zoom. Cache the actual OpenGL view so the
-    // viewport pen coordinate can be mapped through the same transform.
-    bool viewerTransformValid=false;
-    double viewerModel[16]{},viewerProjection[16]{};
-    int viewerViewport[4]{};
     std::array<double,3> rememberedDmin{};
     bool hasRememberedDmin=false;
 };
@@ -226,7 +219,7 @@ OfxStatus describeContext(OfxImageEffectHandle effect) {
     define(set,kOfxParamTypePushButton,"sampleNeutral","框选设为中性灰 / Use box as neutral grey");
     p=define(set,kOfxParamTypeBoolean,"neutralOverlay","显示取样框 / Show sample box");
     check(props->propSetInt(p,kOfxParamPropDefault,0,1));
-    props->propSetString(p,kOfxParamPropHint,0,"Move over the Resolve viewer for a live box. Click for the current size, or drag the exact rectangle.");
+    props->propSetString(p,kOfxParamPropHint,0,"Click the Resolve viewer for the current size, or drag the exact rectangle. The committed box stays fixed while you move to the inspector.");
     defineNumber(set,"neutralSize","取样大小 / Sample size",0.03,0.005,0.50,0.005,3);
     p=define(set,kOfxParamTypeBoolean,"neutralAbsolute","已知灰卡：放到目标码值 / Known grey card: map to target");
     check(props->propSetInt(p,kOfxParamPropDefault,0,0));
@@ -503,19 +496,10 @@ bool samplePoint(OfxImageEffectHandle effect,double time,OfxPropertySetHandle in
     double pen[2]{};
     if(props->propGetDoubleN(in,kOfxInteractPropPenPosition,2,pen)!=kOfxStatOK)return false;
     Instance* current=instance(effect);
-    double viewportPen[2]{};
-    if(current->viewerTransformValid &&
-       props->propGetDoubleN(in,kOfxInteractPropPenViewportPosition,2,viewportPen)==kOfxStatOK) {
-        double z=0.0;
-        const double windowX=current->viewerViewport[0]+viewportPen[0];
-        const double windowY=current->viewerViewport[1]+viewportPen[1];
-        if(gluUnProject(windowX,windowY,0.0,current->viewerModel,current->viewerProjection,
-                        current->viewerViewport,&cx,&cy,&z)!=GL_TRUE) {
-            cx=pen[0];cy=pen[1];
-        }
-    } else {
-        cx=pen[0];cy=pen[1];
-    }
+    // PenPosition is already in the same OpenFX canonical coordinate system used
+    // by overlay drawing. Re-projecting it introduces offsets at viewer zooms and
+    // display scale factors other than 100 percent.
+    cx=pen[0];cy=pen[1];
     OfxRectD rod{};
     if(effects->clipGetRegionOfDefinition(current->source,time,&rod)!=kOfxStatOK)return false;
     const double width=rod.x2-rod.x1,height=rod.y2-rod.y1;
@@ -556,10 +540,6 @@ OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandl
         OfxImageEffectHandle effect{};Instance* i=nullptr;double time=0.0;
         if(!interactContext(in,effect,i,time) || !integer(i->neutralOverlay,time))return kOfxStatReplyDefault;
         if(std::strcmp(action,kOfxInteractActionDraw)==0) {
-            glGetDoublev(GL_MODELVIEW_MATRIX,i->viewerModel);
-            glGetDoublev(GL_PROJECTION_MATRIX,i->viewerProjection);
-            glGetIntegerv(GL_VIEWPORT,i->viewerViewport);
-            i->viewerTransformValid=true;
             OfxRectD rod{};if(effects->clipGetRegionOfDefinition(i->source,time,&rod)!=kOfxStatOK)return kOfxStatReplyDefault;
             double r[4];for(int n=0;n<4;n++)r[n]=number(i->neutralRoi[n],time);
             double x0=rod.x1+r[0]*(rod.x2-rod.x1),y0=rod.y1+r[1]*(rod.y2-rod.y1);
@@ -567,7 +547,7 @@ OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandl
             if(i->neutralDragging) {
                 x0=std::min(i->dragStartX,i->dragCurrentX);x1=std::max(i->dragStartX,i->dragCurrentX);
                 y0=std::min(i->dragStartY,i->dragCurrentY);y1=std::max(i->dragStartY,i->dragCurrentY);
-            } else if(i->hoverValid) {
+            } else if(i->hoverValid && !i->sampleCommitted) {
                 const double size=std::clamp(number(i->neutralSize,time),0.005,0.5);
                 const double hw=(rod.x2-rod.x1)*size*.5,hh=(rod.y2-rod.y1)*size*.5;
                 x0=i->hoverX-hw;x1=i->hoverX+hw;y0=i->hoverY-hh;y1=i->hoverY+hh;
@@ -613,7 +593,7 @@ OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandl
         }
         if(std::strcmp(action,kOfxInteractActionPenUp)==0 && i->neutralDragging) {
             if(!samplePoint(effect,time,in,cx,cy,x,y))return kOfxStatReplyDefault;
-            i->dragCurrentX=cx;i->dragCurrentY=cy;i->hoverX=cx;i->hoverY=cy;i->hoverValid=true;
+            i->dragCurrentX=cx;i->dragCurrentY=cy;i->hoverX=cx;i->hoverY=cy;
             check(params->paramEditBegin(i->set,"Set sample box"));
             if(i->neutralDragMoved) {
                 double sx=0.0,sy=0.0,ex=0.0,ey=0.0;
@@ -623,7 +603,7 @@ OfxStatus overlayEntry(const char* action,const void* handle,OfxPropertySetHandl
                 ex=x;ey=y;
                 setSampleRectangle(*i,std::min(sx,ex),std::min(sy,ey),std::max(sx,ex),std::max(sy,ey));
             } else moveNeutralSample(*i,time,x,y);
-            i->neutralDragging=false;check(params->paramEditEnd(i->set));
+            i->neutralDragging=false;i->hoverValid=false;i->sampleCommitted=true;check(params->paramEditEnd(i->set));
             params->paramSetValue(i->neutralStatus,"Sample box updated. Choose Dmin, Dmax, or neutral-grey sampling.");
             if(interacts)interacts->interactRedraw(reinterpret_cast<OfxInteractHandle>(const_cast<void*>(handle)));
             return kOfxStatOK;
@@ -740,7 +720,7 @@ OfxStatus entry(const char* action,const void* handle,OfxPropertySetHandle in,Of
       catch(...) {return kOfxStatFailed;}
 }
 void setHost(OfxHost* h){host=h;}
-OfxPlugin plugin={kOfxImageEffectPluginApi,1,"org.openrevelare.negative.prototype",0,6,setHost,entry};
+OfxPlugin plugin={kOfxImageEffectPluginApi,1,"org.openrevelare.negative.prototype",0,7,setHost,entry};
 }
 extern "C" __attribute__((visibility("default"))) int OfxGetNumberOfPlugins(){return 1;}
 extern "C" __attribute__((visibility("default"))) OfxPlugin* OfxGetPlugin(int index){return index==0?&plugin:nullptr;}

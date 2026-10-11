@@ -41,13 +41,14 @@ Implemented: CPU float32 RGB/RGBA rendering, preserved alpha, single-frame autom
 analysis, Dmin lock, density endpoints, independent gain and Shift, numeric ROI, native
 calibration error reporting. No per-render auto-analysis or file access.
 
-The shared viewer sample box supports all three calibration points. Moving over the viewer
-shows a live box under the pointer. A click commits the current Sample size; a drag commits
-the exact rectangle between press and release. Use the box as film base to set Dmin from one
+The shared viewer sample box supports all three calibration points. Before the first selection,
+moving over the viewer shows a live box under the pointer. A click commits the current Sample
+size; a drag commits the exact rectangle between press and release. The committed box stays
+fixed while the pointer moves to the OFX inspector. Use the box as film base to set Dmin from one
 co-sited robust RGB sample, or as highlight to set Dmax. Manual Dmin preserves the previous
 per-channel spans until Dmax is sampled, so the image remains valid between the two actions.
-The pointer is mapped from Resolve's viewport through the same OpenGL projection used to draw
-the box, so viewer zoom and pan cannot create a second, offset coordinate system.
+The pointer and box both use the OpenFX canonical coordinate supplied by Resolve, so zoom,
+pan and Retina viewport scaling are not applied a second time.
 
 Neutral-grey calibration adds a genuine third point without moving Dmin or Dmax. Select a
 known neutral patch with the same box, then press Sample neutral grey. By default the common
