@@ -248,12 +248,14 @@ public static class Pipeline
             // and the rotation's corners — because fill is not picture and must not be rendered
             // as one (see below). The SDR path never asks, so it stays bit-identical.
             pixels = ProcessFrame(source.Pixels, scene, target.IsExtended, out bool[]? fill);
+            ColorSpaceDef analyticSource = AnalyticSourceSpaceFor(source, target);
             ColorPipeline.ToOutputTargetFor(
                 pixels.Data,
                 cal,
                 target,
                 ColorPipelineVersion.ManagedV2,
-                colorManagement);
+                colorManagement,
+                analyticSource);
 
             if (target.IsExtended)
             {
@@ -287,6 +289,25 @@ public static class Pipeline
         }
 
         return DescribeRenderedPixels(pixels, cal, ColorPipelineVersion.ManagedV2);
+    }
+
+    /// <summary>
+    /// Chooses the meaning of the endpoint-normalised RGB channels at the analytic display exit.
+    /// A characterized source really is in the ACEScg working space. Camera-native RAW is
+    /// deliberately admitted without a camera matrix, so treating those unknown channels as
+    /// ACEScg and then applying ACEScg→output invents a large, repeatable hue rotation. For that
+    /// one admission, keep the calibrated channel RGB in the selected output primaries. Print
+    /// LUTs still consume the same untouched Cineon signal; this choice only affects the analytic
+    /// rendering and its HDR luminance companion.
+    /// </summary>
+    internal static ColorSpaceDef AnalyticSourceSpaceFor(WorkingFrame source, OutputTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(target);
+        return source.Source.OriginalEncoding is UncharacterizedPixelEncoding
+            { CaptureKind: CaptureKind.RawCameraNative }
+            ? target.Space
+            : ColorPipeline.Working;
     }
 
     /// <summary>

@@ -271,3 +271,27 @@ the best roll reference. 0018/0019 still measure a deeper picture reference in O
 next parity work must isolate candidate selection and input decode domain; changing the Cineon
 placement constant to force these three images to agree would mix measurement with placement and
 repeat the standard mismatch this branch removed.
+
+## 0020 input-domain diagnosis — 2026-10-12
+
+The installed build repeatedly produced the same 0020 endpoints: Dmin
+`0.031/0.093/0.541`, Dmax `0.831/1.048/1.642`, spans `0.800/0.955/1.101`, and a 685 target. The
+previously stored NegBase result displayed scale `1.691/1.496/1.170` and implied spans of roughly
+`0.746/0.844/1.079`. Those slope differences do not predict OpenRevelare's observed warm cast:
+relative to green, OpenRevelare's endpoint mapping strengthens blue rather than suppressing it.
+Overall contrast is therefore not the cause of the yellow/orange difference.
+
+An offline render then held the RAW decode, crop, endpoints, Cineon placement and analytic display
+curve constant and changed only the interpretation of the three channels at the output matrix.
+The existing path treated LibRaw's uncharacterized camera-native UniWB channels as ACEScg and
+applied the large ACEScg-to-sRGB rotation. Treating the already endpoint-calibrated channel RGB as
+sRGB instead removed the orange cast and closely approached the stored NegBase appearance. The
+managed pipeline now makes that distinction from source provenance: camera-native RAW uses the
+selected output primaries for the analytic rendering, while characterized sources that really
+entered the ACEScg working space retain the ACEScg-to-output conversion. Print-film LUTs continue
+to consume the same untouched Cineon signal.
+
+Re-running NegBase automatic on 0020 replaced the stored preferred result with a dark blue result
+(`dmin 1.3691/0.9220/0.5499`, `dmax 0.0261/0.0182/0.0127`, scale
+`0.734/0.741/0.771`) and repeated identically. This proves the preferred NegBase frame contained
+previous endpoint or channel work; it must not be cited as NegBase's current pure-auto output.

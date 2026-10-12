@@ -104,10 +104,21 @@ public static class ColorPipeline
     /// </summary>
     public static void ToOutputSpace(float[] data, ColorSpaceDef output,
                                      GamutMapping mapping = GamutMapping.Desaturate)
+        => ToOutputSpace(data, Working, output, mapping);
+
+    /// <summary>
+    /// The analytic display rendering with an explicit interpretation of the three linear
+    /// channels entering step 4. Characterized inputs use <see cref="Working"/>. A camera-native
+    /// RAW whose primaries have never been characterized instead uses the requested output
+    /// primaries: endpoint calibration has made its neutral axis meaningful, but calling those
+    /// remaining channel coordinates ACEScg would invent a colour transform the input never had.
+    /// </summary>
+    internal static void ToOutputSpace(float[] data, ColorSpaceDef source, ColorSpaceDef output,
+                                       GamutMapping mapping = GamutMapping.Desaturate)
     {
         LogEncoding.ToCineon(data);
         CineonToDisplay(data);
-        OutputRender.Convert(data, Working, output, mapping);
+        OutputRender.Convert(data, source, output, mapping);
         OutputRender.Encode(data, output);
     }
 
@@ -413,7 +424,8 @@ public static class ColorPipeline
         FrameParams cal,
         OutputTarget target,
         ColorPipelineVersion pipelineVersion,
-        IColorManagementEngine colorManagement)
+        IColorManagementEngine colorManagement,
+        ColorSpaceDef? analyticSource = null)
     {
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(cal);
@@ -421,7 +433,16 @@ public static class ColorPipeline
 
         if (!target.IsExtended)
         {
-            ToOutputSpaceFor(data, cal, pipelineVersion, colorManagement);
+            if (pipelineVersion == ColorPipelineVersion.ManagedV2
+                && PrintLutFor(cal, target) is null
+                && analyticSource is ColorSpaceDef source)
+            {
+                ToOutputSpace(data, source, target.Space);
+            }
+            else
+            {
+                ToOutputSpaceFor(data, cal, pipelineVersion, colorManagement);
+            }
             return;
         }
 
@@ -433,10 +454,11 @@ public static class ColorPipeline
             if (applied.Contract.IsExtendedOutput)
                 ToExtendedOutputTargetVia(data, applied.Lut, applied.Contract, target);
             else
-                ToExtendedOutputTargetViaPrint(data, applied.Lut, applied.Contract, target, colorManagement);
+                ToExtendedOutputTargetViaPrint(data, applied.Lut, applied.Contract, target, colorManagement,
+                                               analyticSource ?? Working);
         }
         else
-            ToExtendedOutputTarget(data, target);
+            ToExtendedOutputTarget(data, target, analyticSource ?? Working);
     }
 
     /// <summary>
@@ -468,11 +490,12 @@ public static class ColorPipeline
     /// as the clamp into <c>[0,1]</c> at the tail of Stage 2.
     /// </para>
     /// </summary>
-    private static void ToExtendedOutputTarget(float[] data, OutputTarget target)
+    private static void ToExtendedOutputTarget(
+        float[] data, OutputTarget target, ColorSpaceDef analyticSource)
     {
         LogEncoding.ToCineon(data);
         CineonToDisplay(data, target.HighlightHeadroom);
-        OutputRender.Convert(data, Working, target.Space, GamutMapping.PreserveExtended);
+        OutputRender.Convert(data, analyticSource, target.Space, GamutMapping.PreserveExtended);
     }
 
     /// <summary>
@@ -546,7 +569,7 @@ public static class ColorPipeline
     /// </summary>
     private static void ToExtendedOutputTargetViaPrint(
         float[] data, CubeLut lut, LutContract contract, OutputTarget target,
-        IColorManagementEngine colorManagement)
+        IColorManagementEngine colorManagement, ColorSpaceDef analyticSource)
     {
         if (contract.IsExtendedOutput)
             throw new ArgumentException("The cube's declared output is an HDR encoding; use the PQ exit.", nameof(contract));
@@ -557,10 +580,10 @@ public static class ColorPipeline
         float[] hdr = (float[])data.Clone();
         LogEncoding.ToCineon(sdr);
         CineonToDisplay(sdr, shoulderAsymptote: 1.0f);
-        OutputRender.Convert(sdr, Working, target.Space, GamutMapping.PreserveExtended);
+        OutputRender.Convert(sdr, analyticSource, target.Space, GamutMapping.PreserveExtended);
         LogEncoding.ToCineon(hdr);
         CineonToDisplay(hdr, target.HighlightHeadroom);
-        OutputRender.Convert(hdr, Working, target.Space, GamutMapping.PreserveExtended);
+        OutputRender.Convert(hdr, analyticSource, target.Space, GamutMapping.PreserveExtended);
 
         // The print, exactly as the SDR target renders it, decoded into the same linear light.
         EncodeLutInput(data, contract.Input);
