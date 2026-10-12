@@ -72,7 +72,7 @@ public static class FilmBase
         double[] tBase,
         ImageBuffer? maskImage = null,
         double? sprocketThreshold = null,
-        double edgeInset = 0.05,
+        double edgeInset = 0.10,
         double minAreaFraction = 0.001,
         double maxChromaRange = 0.35,
         double maxMeanDensity = 2.0)
@@ -115,7 +115,14 @@ public static class FilmBase
             }
             double maskLuma = ((double)mask.Data[source] + mask.Data[source + 1] + mask.Data[source + 2]) / 3.0;
             meanDensity[p] = sum / 3.0;
-            valid[p] = ok && (sprocketThreshold is not double cut || maskLuma <= cut);
+            // Reject opaque frame rails before the high-density references and threshold are
+            // measured. Rejecting them only after connected components are formed is too late:
+            // on the real 0018/0019 RAFs the two rails fill almost the entire top 5%, so no
+            // picture-white pixel can enter the candidate mask at all. The same bound still
+            // allows one channel of a real neutral region to exceed 2.0 when its three-channel
+            // mean remains in picture-density territory.
+            valid[p] = ok && meanDensity[p] <= maxMeanDensity
+                       && (sprocketThreshold is not double cut || maskLuma <= cut);
         }
 
         // A neutral negative does not have equal raw RGB density spans. The three dye layers,

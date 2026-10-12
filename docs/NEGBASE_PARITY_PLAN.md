@@ -26,6 +26,11 @@ an explicit true-Dmax measurement; it is not silently substituted into the diffu
 path. Automatic runs also clear prior RGB alignment and display adjustments so the same source
 cannot change merely because the user previously adjusted and reset it.
 
+Real-RAW replay found a second ordering bug: rejecting a dense frame rail after forming the top-5%
+mask leaves no picture-white pixels to inspect. Pixels in opaque-density territory are now removed
+before percentile references are formed, with a 10% picture inset. A regression fixture places
+large density-2.6 rails around a valid 32×32 neutral reference and requires the reference to win.
+
 ## Rules for parity work
 
 1. Record input colour domain, crop, Dmin, Dmax, target code, per-channel scale and output profile.

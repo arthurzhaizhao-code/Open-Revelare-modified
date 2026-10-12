@@ -236,3 +236,13 @@ incorrect before channel alignment: film dyes, camera filters and copy light giv
 different slopes. Candidate ranking and chroma rejection now operate after normalising each
 channel by its frame-level high-density scale. Coloured regions remain rejectable, while a neutral
 white region may have different raw density spans in R, G and B.
+
+The first normalised build still fell back on 0018 and 0019. Replaying the exact UniWB, half-size
+and integer-box preview path showed why: residual opaque rails inside the saved crop occupied
+nearly all of the top 5% population. Rejecting rail components after thresholding could never
+recover picture pixels that had already been excluded from that population. Opaque-density pixels
+are now removed before channel references and thresholds are computed, and the picture analysis
+uses a 10% inset. On the three real RAFs this exposes internal neutral candidates with density spans
+of approximately 0018 `0.97/1.17/1.43`, 0019 `0.92/1.10/1.29`, and 0023 `0.80/0.96/1.11`, instead
+of falling back to the much denser frame rails. These values still require installed-build visual
+comparison and are recorded as measurements, not a claim of complete NegBase parity.

@@ -128,6 +128,30 @@ public class NegBaseParityTests
         Assert.InRange(candidate!.MeanDensity, 1.39, 1.41);
     }
 
+    [Fact]
+    public void Opaque_frame_rails_are_removed_before_candidate_thresholding()
+    {
+        ImageBuffer image = GradientFrame(32, coloured: false);
+        for (int y = 0; y < image.Height; y++)
+        for (int x = 60; x < 115; x++)
+        {
+            int left = (y * image.Width + x) * 3;
+            int right = (y * image.Width + image.Width - 1 - x) * 3;
+            for (int c = 0; c < 3; c++)
+            {
+                image.Data[left + c] = T(2.6);
+                image.Data[right + c] = T(2.6);
+            }
+        }
+
+        NeutralHighlightCandidate? candidate = FilmBase.DetectNeutralHighlightFromFrame(
+            image, [1.0, 1.0, 1.0]);
+
+        Assert.NotNull(candidate);
+        Assert.InRange(candidate!.MeanDensity, 1.39, 1.41);
+        Assert.True(candidate.Region.X > 0.3 && candidate.Region.X < 0.6);
+    }
+
     private static double Code(float linear) =>
         FrameParams.CineonWhiteCode
         + Math.Log10(Math.Max(linear, 1e-10f)) / FrameParams.CineonDensityPerCode;
