@@ -3651,9 +3651,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// The 自动（单张）button: geometry + the full inversion chain, for the CURRENT frame only.
     ///
-    /// Same four photometric steps as <see cref="AutoInvertRollAsync"/>'s stage 1, in the same
-    /// order and for the same reasons (see that method's remarks — t_base must precede
-    /// everything, levels must come last).
+    /// Keeps the current roll D_min fixed and re-measures only this frame's highlight endpoint.
+    /// D_min is the physical film base, so estimating it again from a cropped picture lets scene
+    /// content change the mask colour.  That is exactly the failure seen on 0020: its cropped
+    /// single-frame solve moved the base and produced a blue result, while the same roll's 0023
+    /// calibration remained neutral when reused on 0020.
     ///
     /// Deliberately does NOT touch the other frames. That is the whole distinction from the
     /// roll button: this one is the escape hatch for the frame the roll-wide solve got wrong —
@@ -3682,23 +3684,25 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _lastHighlightMeasured);
 
         double? cut = AutoBoardCut();
-        bool baseMeasured = false;
         bool highlightMeasured = false;
         bool committed = false;
         _suppressRender = true;
         try
         {
             ResetAutomaticBaseline();
+            // ResetAutomaticBaseline intentionally does not touch D_min.  Re-assign the snapshot
+            // anyway so this invariant stays explicit if that helper grows in the future.
+            DMinPerChannel = (double[])before.DMin.Clone();
             committed = SingleFrameAutoTransaction.Run(
-                () => baseMeasured = AutoFilmBaseFromRoll(
-                    cut, useMode: true, broadcastToRoll: false),
                 () =>
                 {
-                    // Neutral start, for the reasons given in AutoInvertRollAsync: stale levels
-                    // would clip the positive the meter reads. These values become real only if
-                    // the highlight endpoint is measured too.
+                    // Neutral start, for the reasons given in AutoInvertRollAsync. These values
+                    // become real only if the highlight endpoint is measured too.
                     Black = 0.0; White = 0.0;
                     AutoDetectDMax(cut);
+                    // A future detector change must not turn this path back into a base solve.
+                    // Re-apply the locked triple after measurement as well as before it.
+                    DMinPerChannel = (double[])before.DMin.Clone();
                     return highlightMeasured = _lastHighlightMeasured;
                 },
                 () => RestoreSingleFrameAutoSnapshot(before));
@@ -3712,7 +3716,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         if (!committed)
         {
-            if (baseMeasured && !highlightMeasured)
+            if (!highlightMeasured)
                 StatusText = Loc.T("⚠ 单张去色罩未应用：这一帧测不到高光，已恢复原参数。请用【高光采样】手动标定或改用【自动（整卷）】");
             return;
         }
@@ -3723,7 +3727,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         ScheduleRender();
         // Only this frame's thumbnail changed — the other frames were untouched.
         if (CurrentFrame is not null) { SetThumbnail(CurrentFrame, null); RestartThumbnails(); }
-        StatusText = Loc.F($"单张去色罩完成 · 黑端（片基密度）{DMinR:F3}, {DMinG:F3}, {DMinB:F3} · 亮端 {DMaxR:F3}, {DMaxG:F3}, {DMaxB:F3}");
+        StatusText = Loc.F($"单张去色罩完成 · 沿用卷片基 {DMinR:F3}, {DMinG:F3}, {DMinB:F3} · 亮端 {DMaxR:F3}, {DMaxG:F3}, {DMaxB:F3}");
     }
 
     private sealed record SingleFrameAutoSnapshot(

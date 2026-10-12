@@ -1069,7 +1069,7 @@
                                         <Button Grid.Column="1" Margin="3,0,0,0"
                                                 HorizontalAlignment="Stretch"
                                                 Click="OnAutoInvertFrameClick" IsEnabled="{Binding HasImage}"
-                                                ToolTip.Tip="{i18n:T '只对当前帧做同样的自动流程，不动其他帧、也不改动裁切——用于整卷参数对这一张不合适时。'}">
+                                                ToolTip.Tip="{i18n:T '沿用当前卷的片基 Dmin，只为当前帧重新测量亮端；不动其他帧、也不改动裁切。'}">
                                             <Grid ColumnDefinitions="Auto,*">
                                                 <ctl:Icon Grid.Column="0" Margin="0,0,6,0" VerticalAlignment="Center" Data="{StaticResource IcoWand}" />
                                                 <TextBlock Grid.Column="1" TextWrapping="Wrap" Text="{i18n:T '自动（单张）'}" VerticalAlignment="Center" />
