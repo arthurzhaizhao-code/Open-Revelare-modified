@@ -31,6 +31,12 @@ mask leaves no picture-white pixels to inspect. Pixels in opaque-density territo
 before percentile references are formed, with a 10% picture inset. A regression fixture places
 large density-2.6 rails around a valid 32×32 neutral reference and requires the reference to win.
 
+The installed `70854d8` build verifies that regression on real RAWs: 0018, 0019 and 0023 now all
+report an internal spatial candidate and 0018 is deterministic across repeated automatic runs.
+0023's span is close to NegBase's implied endpoint; 0018 and 0019 remain longer. This narrows the
+next investigation to the picture-reference choice and decode domain, rather than state leakage,
+opaque-rail contamination, or a 685-versus-1000 placement mismatch.
+
 ## Rules for parity work
 
 1. Record input colour domain, crop, Dmin, Dmax, target code, per-channel scale and output profile.

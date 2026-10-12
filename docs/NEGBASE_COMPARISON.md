@@ -246,3 +246,28 @@ uses a 10% inset. On the three real RAFs this exposes internal neutral candidate
 of approximately 0018 `0.97/1.17/1.43`, 0019 `0.92/1.10/1.29`, and 0023 `0.80/0.96/1.11`, instead
 of falling back to the much denser frame rails. These values still require installed-build visual
 comparison and are recorded as measurements, not a claim of complete NegBase parity.
+
+## Installed-build validation — 2026-10-12
+
+Commit `70854d8` was built on GitHub's Apple Silicon runner, installed, and run twice on 0018 and
+once on 0019/0023. The repeated 0018 run produced no parameter change, so the earlier
+first-run/reset/second-run dependence remains fixed. All three frames selected an internal
+spatial-neutral component rather than a rail:
+
+| RAF | OpenRevelare Dmin | OpenRevelare Dmax | measured span | selected region |
+|---|---|---|---|---|
+| 0018 | 0.011 / 0.069 / 0.515 | 0.980 / 1.244 / 1.949 | 0.969 / 1.174 / 1.434 | x=52.0%, y=25.0%, 4225 px |
+| 0019 | 0.026 / 0.086 / 0.540 | 0.950 / 1.185 / 1.829 | 0.924 / 1.099 / 1.289 | x=42.9%, y=10.6%, 5757 px |
+| 0023 | 0.057 / 0.118 / 0.568 | 0.852 / 1.077 / 1.683 | 0.796 / 0.959 / 1.115 | x=59.0%, y=69.7%, 2638 px |
+
+The installed result is visibly much closer to NegBase on 0018/0019, but it is not yet a pixel
+match. NegBase's currently displayed 0018/0019/0023 endpoints imply spans of approximately
+`0.672/0.815/1.105`, `0.696/0.831/1.060`, and `0.732/0.848/1.141`. Its displayed channel scale
+multiplied by each implied span is consistently about `1.262`; that stable relationship is useful
+formula evidence, but does not reveal how NegBase selected the endpoint pixels.
+
+0023 remains the closest endpoint match and is also the scene-rich frame the user identified as
+the best roll reference. 0018/0019 still measure a deeper picture reference in OpenRevelare. The
+next parity work must isolate candidate selection and input decode domain; changing the Cineon
+placement constant to force these three images to agree would mix measurement with placement and
+repeat the standard mismatch this branch removed.
