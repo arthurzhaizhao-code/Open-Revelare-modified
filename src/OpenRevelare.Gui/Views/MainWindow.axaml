@@ -238,7 +238,7 @@
                     </Button>
                     <Button Name="ResetButton" Classes="icon" Click="OnResetClick" IsEnabled="{Binding HasImage}"
                             AutomationProperties.Name="{i18n:T '重置本帧调整'}"
-                            ToolTip.Tip="{i18n:T '编辑：重置本帧调整'}">
+                            ToolTip.Tip="{i18n:T '编辑：重置本帧调整（保留整卷片基）'}">
                         <ctl:Icon Data="{StaticResource IcoReset}" />
                     </Button>
                 </StackPanel>

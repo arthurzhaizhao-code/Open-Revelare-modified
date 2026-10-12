@@ -3683,6 +3683,19 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _rollBaseCalibration, _rollHighlightCalibration, _rollUsedFallbackHighlight,
             _lastHighlightMeasured);
 
+        double[]? lockedDMin = SingleFrameFilmBase.Resolve(
+            before.DMin,
+            requirePhysicalRawBase: RollIsRaw,
+            _rollBaseCalibration,
+            Frames.Where(f => !ReferenceEquals(f, CurrentFrame))
+                  .Select(f => f.Params.DMinPerChannel));
+        if (lockedDMin is null)
+        {
+            StatusText = Loc.T("⚠ 单张去色罩未应用：当前卷没有有效片基。请先运行【自动（整卷）】或手动【片基采样】。");
+            return;
+        }
+        bool recoveredRollBase = !lockedDMin.SequenceEqual(before.DMin);
+
         double? cut = AutoBoardCut();
         bool highlightMeasured = false;
         bool committed = false;
@@ -3692,7 +3705,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             ResetAutomaticBaseline();
             // ResetAutomaticBaseline intentionally does not touch D_min.  Re-assign the snapshot
             // anyway so this invariant stays explicit if that helper grows in the future.
-            DMinPerChannel = (double[])before.DMin.Clone();
+            DMinPerChannel = (double[])lockedDMin.Clone();
             committed = SingleFrameAutoTransaction.Run(
                 () =>
                 {
@@ -3702,7 +3715,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                     AutoDetectDMax(cut);
                     // A future detector change must not turn this path back into a base solve.
                     // Re-apply the locked triple after measurement as well as before it.
-                    DMinPerChannel = (double[])before.DMin.Clone();
+                    DMinPerChannel = (double[])lockedDMin.Clone();
                     return highlightMeasured = _lastHighlightMeasured;
                 },
                 () => RestoreSingleFrameAutoSnapshot(before));
@@ -3727,7 +3740,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         ScheduleRender();
         // Only this frame's thumbnail changed — the other frames were untouched.
         if (CurrentFrame is not null) { SetThumbnail(CurrentFrame, null); RestartThumbnails(); }
-        StatusText = Loc.F($"单张去色罩完成 · 沿用卷片基 {DMinR:F3}, {DMinG:F3}, {DMinB:F3} · 亮端 {DMaxR:F3}, {DMaxG:F3}, {DMaxB:F3}");
+        StatusText = recoveredRollBase
+            ? Loc.F($"单张去色罩完成 · 已从同卷恢复片基 {DMinR:F3}, {DMinG:F3}, {DMinB:F3} · 亮端 {DMaxR:F3}, {DMaxG:F3}, {DMaxB:F3}")
+            : Loc.F($"单张去色罩完成 · 沿用卷片基 {DMinR:F3}, {DMinG:F3}, {DMinB:F3} · 亮端 {DMaxR:F3}, {DMaxG:F3}, {DMaxB:F3}");
     }
 
     private sealed record SingleFrameAutoSnapshot(
@@ -4437,14 +4452,20 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public void ResetAdjustments()
     {
         _renderCts?.Cancel();
+        // D_min is a physical property of the roll, not a per-frame grade.  Preserve it across
+        // "reset this frame" so the next current-frame automatic solve cannot pair a zero black
+        // endpoint with a newly measured white endpoint (the 0008 first-run/reset/second-run bug).
+        double[] lockedDMin = DMinPerChannel;
+        string lockedFilmBaseText = FilmBaseText;
+        FilmBaseEstimate? lockedBaseCalibration = _rollBaseCalibration;
+        bool keepBaseDiagnostics = _calibrationDiagnosticsRollWide && lockedBaseCalibration is not null;
         // Stage 1 — lens / sprocket
         DistortionK1 = 0; VignetteAmount = 0; VignetteFalloff = 2.5;
         SprocketEnabled = false; SprocketThreshold = 0.9;
         // Stage 1 — film base
         TBaseR = TBaseG = TBaseB = 1.0;   // 参考透射率恒为中性；片基由黑端承载
-        // 两端回到一组中性（无色偏）的默认值：黑在片基处，白在输出范围处。
-        // 由自动标定或采样重新测量。
-        DMinR = 0; DMinG = 0; DMinB = 0;
+        // The frame's highlight endpoint returns to neutral.  The roll-owned black endpoint stays.
+        DMinPerChannel = lockedDMin;
         DMaxR = DMaxG = DMaxB = FrameParams.OutputRange;
         HighlightTargetCode = FrameParams.CineonDiffuseWhiteCode;
         RgbAlignShiftR = RgbAlignShiftG = RgbAlignShiftB = 0.0;
@@ -4459,10 +4480,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         // The cell goes with the crop here: a full geometry reset says this frame is the whole
         // file again, and a cell left behind would claim a negative the frame no longer occupies.
         _splitCell = null;
-        FilmBaseText = "";
+        FilmBaseText = lockedFilmBaseText;
         HighlightConfidenceText = "";
-        _calibrationDiagnosticsRollWide = false;
-        _rollBaseCalibration = null;
+        _calibrationDiagnosticsRollWide = keepBaseDiagnostics;
+        _rollBaseCalibration = lockedBaseCalibration;
         _rollHighlightCalibration = null;
         _rollUsedFallbackHighlight = false;
         _filmBaseSampled = false;
