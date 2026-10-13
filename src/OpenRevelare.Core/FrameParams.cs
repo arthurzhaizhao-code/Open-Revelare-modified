@@ -485,7 +485,7 @@ public sealed class FrameParams
     public double BlackPoint { get; set; } = 0.0;
     /// <summary>Levels white point. 1 = default.</summary>
     public double WhitePoint { get; set; } = 1.0;
-    /// <summary>Creative contrast amount. 0 = pass-through.</summary>
+    /// <summary>Contrast about mid-grey (gain 2^contrast). 0 = pass-through.</summary>
     public double Contrast { get; set; } = 0.0;
     /// <summary>Highlights lift/crush [-1,1]. 0 = pass-through.</summary>
     public double Highlights { get; set; } = 0.0;

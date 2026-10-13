@@ -39,14 +39,10 @@ public static class SceneGrade
         float wbG = (float)cal.WbGains[1];
         float wbB = (float)cal.WbGains[2];
         float exposure = MathF.Pow(2f, (float)cal.ExposureEv);
-        float contrast = (float)cal.Contrast;
+        float contrast = MathF.Pow(2f, (float)cal.Contrast);
         float black = (float)cal.BlackPoint;
         float white = (float)cal.WhitePoint;
-        // The UI stores the historical levels endpoints.  Recover its bipolar slider values,
-        // but do not run a global levels remap: before the display rendering that would collapse
-        // a broad shadow range onto Cineon 95, producing a large lifted-black shelf through 2383.
-        float blackControl = Math.Clamp(-black / 0.5f, -1f, 1f);
-        float whiteControl = Math.Clamp((1f - white) / 0.5f, -1f, 1f);
+        bool levels = (black != 0f || white != 1f) && black < white;
         float shadows = (float)cal.Shadows;
         float highlights = (float)cal.Highlights;
         float saturationControl = (float)cal.Saturation;
@@ -54,8 +50,7 @@ public static class SceneGrade
         float[]? curveR = Stage2.BuildLut(cal.CurvePointsR, cal.CurveHasEndpoints);
         float[]? curveG = Stage2.BuildLut(cal.CurvePointsG, cal.CurveHasEndpoints);
         float[]? curveB = Stage2.BuildLut(cal.CurvePointsB, cal.CurveHasEndpoints);
-        bool doTone = blackControl != 0f || whiteControl != 0f || contrast != 0f
-                      || shadows != 0f || highlights != 0f;
+        bool doTone = levels || cal.Contrast != 0.0 || shadows != 0f || highlights != 0f;
         bool doCurves = curveM is not null || curveR is not null || curveG is not null || curveB is not null;
         bool doWb = cal.WbGains.Any(value => Math.Abs(value - 1.0) > 1e-8);
         bool doExposure = cal.ExposureEv != 0.0;
@@ -77,21 +72,12 @@ public static class SceneGrade
                     float sourceTone = LinearPositiveToTone(sourceY);
                     float targetTone = sourceTone;
 
-                    // A bounded S-curve fixes both endpoints.  The old 18%-grey affine pivot put
-                    // almost the whole photograph on the bright side, so adding contrast lifted
-                    // most tones and read as haze.  A 0.38 perceptual pivot divides an ordinary
-                    // rendered photograph near its visual centre instead.
-                    const float contrastPivot = 0.38f;
-                    targetTone += contrast * 2f * (sourceTone - contrastPivot)
-                                  * sourceTone * (1f - sourceTone);
+                    if (levels)
+                        targetTone = (targetTone - black) / (white - black);
 
-                    // Black/white are narrow endpoint zones, not another global levels pass.
-                    // Their deliberately small amplitudes give the ±1 UI range useful travel and
-                    // keep a one-step nudge from flattening an entire end of the histogram.
-                    float blackMask = 1f - SmoothStep(0.025f, 0.30f, sourceTone);
-                    float whiteMask = SmoothStep(0.62f, 0.96f, sourceTone);
-                    targetTone += blackControl * 0.025f * blackMask;
-                    targetTone += whiteControl * 0.085f * whiteMask;
+                    // Contrast pivots around photographic mid-grey rather than encoded 0.5.
+                    const float midGreyTone = 0.183f;
+                    targetTone = midGreyTone + (targetTone - midGreyTone) * contrast;
 
                     // Both masks are derived from sourceTone.  Their soft zones overlap around
                     // the mid-tones, as photographic controls do, but neither adjustment changes
@@ -102,18 +88,11 @@ public static class SceneGrade
                     targetTone += highlights * 0.22f * highlightMask;
                     targetTone = Math.Clamp(targetTone, 0f, ToneCeiling);
 
-                    // The proxy deliberately maps everything below rendered black to tone zero,
-                    // so its inverse is not one-to-one there.  Preserve the original sample when
-                    // a control produced no tone delta; otherwise merely enabling a different
-                    // tonal control could lift those values onto one common black shelf.
-                    if (MathF.Abs(targetTone - sourceTone) > 1e-7f)
-                    {
-                        float targetY = targetTone <= 0f ? 0f : ToneToLinearPositive(targetTone);
-                        float scale = targetY / sourceY;
-                        r *= scale;
-                        g *= scale;
-                        b *= scale;
-                    }
+                    float targetY = ToneToLinearPositive(targetTone);
+                    float scale = targetY / sourceY;
+                    r *= scale;
+                    g *= scale;
+                    b *= scale;
                 }
 
                 if (curveM is not null)
@@ -163,10 +142,8 @@ public static class SceneGrade
     }
 
     /// <summary>
-    /// Saturation in log-light coordinates.  Scaling linear RGB away from arithmetic luma was
-    /// largely undone by the following Cineon encode and print rendering; scaling channel
-    /// separation in log space changes the quantity a Cineon/2383 path actually carries.  The
-    /// weighted log mean stays fixed, so this is chroma strength rather than exposure.
+    /// Changes the channel separation carried into Cineon/2383 while holding weighted log
+    /// brightness steady.  This gives saturation useful travel after print-film rendering.
     /// </summary>
     private static void ApplyLogSaturation(
         ref float r,
