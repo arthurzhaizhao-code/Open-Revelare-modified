@@ -560,6 +560,56 @@ public sealed class ManagedPrintLutOutputTests
         1 1 1
         """;
 
+    [Theory]
+    [InlineData("")]
+    [InlineData(":kodak-2383")]
+    public void Scene_grade_v3_zero_controls_match_managed_v2_exactly(string printLut)
+    {
+        var parameters = new FrameParams
+        {
+            OutputSpace = "Rec709",
+            PrintLut = printLut,
+            DisplayReferredStage2 = true,
+        };
+        using var cmm = StubEngine.NeverCalled();
+
+        float[] v2 = Pipeline.Render(
+            MakeWorkingFrame(MakeSyntheticNegative()), parameters,
+            ColorPipelineVersion.ManagedV2, cmm).Pixels.Data;
+        float[] v3 = Pipeline.Render(
+            MakeWorkingFrame(MakeSyntheticNegative()), parameters,
+            ColorPipelineVersion.SceneGradeV3, cmm).Pixels.Data;
+
+        AssertFloatBitsEqual(v2, v3, $"zero grade {printLut}");
+    }
+
+    [Fact]
+    public void Scene_grade_v3_applies_tone_before_the_2383_render()
+    {
+        var parameters = new FrameParams
+        {
+            OutputSpace = "Rec709",
+            PrintLut = ":kodak-2383",
+            Contrast = 0.25,
+            Shadows = 0.30,
+            Highlights = -0.20,
+        };
+        FrameParams scene = parameters.Clone();
+        scene.OutputIntent = OutputIntent.None;
+        ImageBuffer expected = Pipeline.ProcessFrame(MakeSyntheticNegative(), scene);
+        SceneGrade.Apply(expected.Data, parameters, ColorSpaces.Rec709);
+        CubeLut lut = Assert.IsType<CubeLut>(PrintLuts.Resolve(parameters.PrintLut));
+        ColorPipeline.ToOutputSpaceVia(expected.Data, lut, ColorSpaces.Rec709);
+        using var cmm = StubEngine.NeverCalled();
+
+        RenderedFrame actual = Pipeline.Render(
+            MakeWorkingFrame(MakeSyntheticNegative()), parameters,
+            ColorPipelineVersion.SceneGradeV3, cmm);
+
+        AssertFloatBitsEqual(expected.Data, actual.Pixels.Data, "V3 pre-2383 grade");
+        Assert.Equal(ColorPipelineVersion.SceneGradeV3, actual.Recipe.PipelineVersion);
+    }
+
     private static FrameParams ConstantQuarterCurve() => new()
     {
         CurveHasEndpoints = true,
