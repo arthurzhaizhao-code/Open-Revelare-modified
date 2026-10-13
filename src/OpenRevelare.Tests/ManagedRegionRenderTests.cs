@@ -8,8 +8,11 @@ public sealed class ManagedRegionRenderTests
 {
     private static readonly RegionRender.Roi FullRoi = new(0.0, 0.0, 1.0, 1.0);
 
-    [Fact]
-    public void Managed_v2_full_region_matches_full_pipeline_with_print_LUT_and_curve()
+    [Theory]
+    [InlineData(ColorPipelineVersion.ManagedV2)]
+    [InlineData(ColorPipelineVersion.AuthorStage2V4)]
+    public void Display_referred_full_region_matches_full_pipeline_with_print_LUT_and_curve(
+        ColorPipelineVersion pipelineVersion)
     {
         WorkingFrame source = MakeWorkingFrame(MakeNegative(14, 11));
         FrameParams parameters = ManagedParameters();
@@ -18,13 +21,13 @@ public sealed class ManagedRegionRenderTests
         RenderedFrame full = Pipeline.Render(
             source,
             parameters,
-            ColorPipelineVersion.ManagedV2,
+            pipelineVersion,
             engine);
         var patch = RegionRender.Render(
             source,
             parameters,
             FullRoi,
-            ColorPipelineVersion.ManagedV2,
+            pipelineVersion,
             engine);
 
         Assert.Equal(FullRoi, patch.Realised);

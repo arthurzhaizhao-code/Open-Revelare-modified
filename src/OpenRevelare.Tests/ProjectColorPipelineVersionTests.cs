@@ -7,11 +7,11 @@ namespace OpenRevelare.Tests;
 public sealed class ProjectColorPipelineVersionTests
 {
     [Fact]
-    public void New_project_data_defaults_to_scene_grade_v3()
+    public void New_project_data_defaults_to_author_stage2_v4()
     {
         var project = new Project.Data();
 
-        Assert.Equal(ColorPipelineVersion.SceneGradeV3, project.ColorPipelineVersion);
+        Assert.Equal(ColorPipelineVersion.AuthorStage2V4, project.ColorPipelineVersion);
     }
 
     [Theory]
@@ -48,18 +48,19 @@ public sealed class ProjectColorPipelineVersionTests
 
         Project.MigrateColorPipelineToCurrent(project);
 
-        Assert.Equal(ColorPipelineVersion.SceneGradeV3, project.ColorPipelineVersion);
+        Assert.Equal(ColorPipelineVersion.AuthorStage2V4, project.ColorPipelineVersion);
         WithTempProject(path =>
         {
             Project.Save(path, project);
-            Assert.Equal(3, JsonNode.Parse(File.ReadAllText(path))!["color_pipeline_version"]!
+            Assert.Equal(4, JsonNode.Parse(File.ReadAllText(path))!["color_pipeline_version"]!
                 .GetValue<int>());
+            Assert.Equal(ColorPipelineVersion.AuthorStage2V4, Project.Load(path).ColorPipelineVersion);
         });
     }
 
     [Theory]
     [InlineData("0")]
-    [InlineData("4")]
+    [InlineData("5")]
     [InlineData("\"2\"")]
     public void Load_rejects_unsupported_or_malformed_pipeline_versions_clearly(string value)
     {
@@ -83,7 +84,7 @@ public sealed class ProjectColorPipelineVersionTests
     [Fact]
     public void Save_rejects_an_unsupported_in_memory_pipeline_version()
     {
-        var project = new Project.Data { ColorPipelineVersion = (ColorPipelineVersion)4 };
+        var project = new Project.Data { ColorPipelineVersion = (ColorPipelineVersion)5 };
 
         WithTempProject(path =>
         {

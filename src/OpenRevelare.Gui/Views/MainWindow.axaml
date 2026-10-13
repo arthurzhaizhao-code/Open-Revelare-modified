@@ -79,7 +79,7 @@
                         <Separator />
                         <MenuItem Header="{i18n:T '复制（按当前面板）'}" InputGesture="{i18n:Accel 'C'}"
                                   Click="OnCopyActiveClick" IsEnabled="{Binding HasImage}"
-                                  ToolTip.Tip="{i18n:T '整卷校准面板 → 复制 Cineon 标定；帧编辑面板 → 复制渲染前成片调整'}">
+                                  ToolTip.Tip="{i18n:T '整卷校准面板 → 复制 Cineon 标定；帧编辑面板 → 复制成片调整'}">
                             <MenuItem.Icon>
                                 <ctl:Icon Data="{StaticResource IcoCopy}" />
                             </MenuItem.Icon>
@@ -107,7 +107,7 @@
                                       IsEnabled="{Binding HasCalClipboard}" />
                             <MenuItem Header="{i18n:T '应用 Cineon 标定到整卷'}" Click="OnApplyCalToRollClick" />
                         </MenuItem>
-                        <MenuItem Header="{i18n:T '成片调整（渲染前）'}" IsEnabled="{Binding HasImage}">
+                        <MenuItem Header="{i18n:T '成片调整（显示渲染后）'}" IsEnabled="{Binding HasImage}">
                             <MenuItem Header="{i18n:T '复制成片调整'}" Click="OnCopySceneClick">
                                 <MenuItem.Icon>
                                     <ctl:Icon Data="{StaticResource IcoCopy}" />
@@ -497,7 +497,7 @@
                                            FontSize="11" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis"
                                            ToolTip.Tip="{Binding LegacyColorPipelineNotice}" />
-                                <Button Grid.Column="1" Content="{i18n:T '迁移到渲染前调整版…'}"
+                                <Button Grid.Column="1" Content="{i18n:T '迁移到原作者成片调整…'}"
                                         Margin="8,0,0,0" Padding="8,3"
                                         Click="OnMigrateColorPipelineClick" />
                                 <Button Grid.Column="2" Classes="icon" Width="22" Height="22"

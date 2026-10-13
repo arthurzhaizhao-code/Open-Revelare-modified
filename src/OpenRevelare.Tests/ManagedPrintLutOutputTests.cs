@@ -612,6 +612,37 @@ public sealed class ManagedPrintLutOutputTests
         Assert.Equal(ColorPipelineVersion.SceneGradeV3, actual.Recipe.PipelineVersion);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData(":kodak-2383")]
+    public void Author_stage2_v4_restores_managed_v2_display_referred_grade_exactly(string printLut)
+    {
+        var parameters = new FrameParams
+        {
+            OutputSpace = "Rec709",
+            PrintLut = printLut,
+            DisplayReferredStage2 = true,
+            ExposureEv = 0.15,
+            BlackPoint = 0.04,
+            WhitePoint = 0.94,
+            Contrast = 0.18,
+            Shadows = 0.22,
+            Highlights = -0.16,
+            Saturation = 0.20,
+        };
+        using var cmm = StubEngine.NeverCalled();
+
+        float[] author = Pipeline.Render(
+            MakeWorkingFrame(MakeSyntheticNegative()), parameters,
+            ColorPipelineVersion.ManagedV2, cmm).Pixels.Data;
+        RenderedFrame restored = Pipeline.Render(
+            MakeWorkingFrame(MakeSyntheticNegative()), parameters,
+            ColorPipelineVersion.AuthorStage2V4, cmm);
+
+        AssertFloatBitsEqual(author, restored.Pixels.Data, $"author Stage 2 {printLut}");
+        Assert.Equal(ColorPipelineVersion.AuthorStage2V4, restored.Recipe.PipelineVersion);
+    }
+
     private static FrameParams ConstantQuarterCurve() => new()
     {
         CurveHasEndpoints = true,

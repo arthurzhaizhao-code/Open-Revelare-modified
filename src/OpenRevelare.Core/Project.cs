@@ -39,7 +39,7 @@ public static class Project
         if (hasDust) return FormatVersion;
         return data.ColorPipelineVersion.IsManaged() ? 3 : MinimumSupportedFormatVersion;
     }
-    public const ColorPipelineVersion CurrentColorPipelineVersion = ColorPipelineVersion.SceneGradeV3;
+    public const ColorPipelineVersion CurrentColorPipelineVersion = ColorPipelineVersion.AuthorStage2V4;
 
     // ── Public data model ───────────────────────────────────────────────────────
     public sealed class RollMeta
@@ -174,7 +174,7 @@ public static class Project
         if (node is null) return ColorPipelineVersion.LegacyV1;
         if (node is not JsonValue value || !value.TryGetValue(out int raw))
             throw new InvalidDataException(CoreText.T(
-                "color_pipeline_version 必须是整数 1、2 或 3"));
+                "color_pipeline_version 必须是整数 1、2、3 或 4"));
         return RequireSupportedColorPipelineVersion((ColorPipelineVersion)raw);
     }
 
@@ -184,8 +184,9 @@ public static class Project
             ColorPipelineVersion.LegacyV1 => version,
             ColorPipelineVersion.ManagedV2 => version,
             ColorPipelineVersion.SceneGradeV3 => version,
+            ColorPipelineVersion.AuthorStage2V4 => version,
             _ => throw new InvalidDataException(CoreText.F(
-                $"不支持的 color_pipeline_version {(int)version}（本版本支持 1、2 和 3）")),
+                $"不支持的 color_pipeline_version {(int)version}（本版本支持 1、2、3 和 4）")),
         };
 
     // ── Relink ──────────────────────────────────────────────────────────────────

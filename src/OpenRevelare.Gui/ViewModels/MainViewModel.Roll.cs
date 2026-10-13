@@ -450,7 +450,7 @@ public partial class MainViewModel
         get
         {
             if (UsesLegacyColorPipeline)
-                return Loc.T("此卷仍是旧版色彩管线（v1），渲染按 D-013 冻结，HDR 不会生效。迁移到 v2 之后可用。");
+                return Loc.T("此卷仍是旧版色彩管线（v1），渲染按 D-013 冻结，HDR 不会生效。迁移到当前管线之后可用。");
 
             if (!_hdrEnabled)
                 return Loc.T("HDR 关闭：印相渲染，高光收进纸白。");

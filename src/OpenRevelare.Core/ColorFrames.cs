@@ -99,12 +99,15 @@ public enum ColorPipelineVersion
     LegacyV1 = 1,
     ManagedV2 = 2,
     SceneGradeV3 = 3,
+    AuthorStage2V4 = 4,
 }
 
 public static class ColorPipelineVersionExtensions
 {
     public static bool IsManaged(this ColorPipelineVersion version) =>
-        version is ColorPipelineVersion.ManagedV2 or ColorPipelineVersion.SceneGradeV3;
+        version is ColorPipelineVersion.ManagedV2
+            or ColorPipelineVersion.SceneGradeV3
+            or ColorPipelineVersion.AuthorStage2V4;
 }
 
 public sealed record OutputRecipe

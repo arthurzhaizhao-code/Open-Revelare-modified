@@ -58,7 +58,7 @@ public partial class MainViewModel
     /// </summary>
     private string DescribeMigrationEffect()
     {
-        if (_colorPipelineVersion == ColorPipelineVersion.ManagedV2)
+        if (_colorPipelineVersion == ColorPipelineVersion.SceneGradeV3)
         {
             bool anyGrade = Frames.Any(frame =>
             {
@@ -71,9 +71,12 @@ public partial class MainViewModel
                        || p.CurvePointsB.Count > 0;
             });
             return anyGrade
-                ? Loc.T("这一卷已有成片调整。迁移后这些数值会保留，但因运算位置与影调算法改变，画面会重新解释；Dmin、Dmax、685 放置和 RGB 对齐不会变化。")
-                : Loc.T("这一卷的成片调整均为零，迁移不会改变当前画面；以后新增的调整会在显示渲染前运行。");
+                ? Loc.T("这一卷已有成片调整。迁移后数值会保留，但会恢复为原作者的显示渲染后算法，画面会重新解释；Dmin、Dmax、685 放置和 RGB 对齐不会变化。")
+                : Loc.T("这一卷的成片调整均为零，迁移不会改变当前画面；以后新增的调整会使用原作者的显示渲染后算法。");
         }
+
+        if (_colorPipelineVersion == ColorPipelineVersion.ManagedV2)
+            return Loc.T("这一卷已经使用原作者的显示渲染后成片调整；迁移只更新版本标记，画面不会变化。");
 
         bool anyLut = false, anyCurve = false, anyLegacyStage2 = false;
         foreach (RollFrame frame in Frames)
@@ -103,11 +106,11 @@ public partial class MainViewModel
 
     /// <summary>The migration dialog's body: what it does, then what it does to THIS roll.</summary>
     public string MigrationDialogText =>
-        Loc.T("迁移会把此工程切换到 v3 渲染前成片调整：Dmin、Dmax、685 放置和 RGB 对齐保持不变；曝光、反差、黑白场、阴影、高光和饱和度会先作用于校准后的正像，再进入标准显示渲染或 2383。阴影与高光使用彼此独立的平滑区域，并保持线性 RGB 色度。工程保存后不会自动退回旧管线。")
+        Loc.T("迁移会把此工程切换到 v4 原作者成片调整：Dmin、Dmax、685 放置和 RGB 对齐保持不变；先完成标准显示渲染或 2383，再由原作者的 Stage 2 处理曝光、反差、黑白场、阴影、高光、曲线和饱和度。工程保存后不会自动退回旧管线。")
         + "\n\n" + DescribeMigrationEffect();
 
     public string LegacyColorPipelineNotice => Loc.T(
-        "此工程仍使用较早的色彩管线，画面暂时保持原样。点击“迁移到渲染前调整版…”可切换到 v3；成片调整将位于标准显示渲染/2383之前。");
+        "此工程仍使用较早的色彩管线，画面暂时保持原样。点击“迁移到原作者成片调整…”可切换到 v4；成片调整将在标准显示渲染/2383之后运行。");
 
     public string ColorPipelineDiagnostic =>
         (_colorPipelineVersion switch
@@ -115,6 +118,7 @@ public partial class MainViewModel
             ColorPipelineVersion.LegacyV1 => "LegacyV1 (explicit compatibility)",
             ColorPipelineVersion.ManagedV2 => "ManagedV2 (display-referred grade)",
             ColorPipelineVersion.SceneGradeV3 => "SceneGradeV3 (pre-render grade)",
+            ColorPipelineVersion.AuthorStage2V4 => "AuthorStage2V4 (display-referred grade)",
             _ => _colorPipelineVersion.ToString(),
         }) + $" · TIFF input={DescribeTiffInput()}";
 
@@ -241,7 +245,7 @@ public partial class MainViewModel
         SetColorPipelineVersion(migration.ColorPipelineVersion);
         await InvalidateColourStateAndReloadAsync();
         RefreshTiffInputDetection();
-        StatusText = Loc.T("已迁移到渲染前成片调整版（v3）；工程将以新版本保存，外观变化不会自动回退。");
+        StatusText = Loc.T("已迁移到原作者成片调整版（v4）；工程将以新版本保存，外观变化不会自动回退。");
     }
 
     /// <summary>

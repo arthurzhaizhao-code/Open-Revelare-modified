@@ -47,7 +47,9 @@ public static class Pipeline
         return pipelineVersion switch
         {
             ColorPipelineVersion.LegacyV1 => DescribeLegacyPixels(pixels, cal),
-            ColorPipelineVersion.ManagedV2 or ColorPipelineVersion.SceneGradeV3 =>
+            ColorPipelineVersion.ManagedV2
+                or ColorPipelineVersion.SceneGradeV3
+                or ColorPipelineVersion.AuthorStage2V4 =>
                 DescribeManagedPixels(pixels, cal, pipelineVersion),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(pipelineVersion), pipelineVersion, "Unknown colour pipeline version."),
