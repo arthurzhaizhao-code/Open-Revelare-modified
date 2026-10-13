@@ -180,9 +180,9 @@ public static class SceneGrade
         float t = Math.Clamp(tone, 0f, ToneCeiling);
         if (t > HighlightRolloff.Knee)
         {
-            float span = 1f - HighlightRolloff.Knee;
+            float shoulderSpan = 1f - HighlightRolloff.Knee;
             float q = t - HighlightRolloff.Knee;
-            t = HighlightRolloff.Knee + q * span / MathF.Max(span - q, Epsilon);
+            t = HighlightRolloff.Knee + q * shoulderSpan / MathF.Max(shoulderSpan - q, Epsilon);
         }
         if (t < 0.05f)
             t = 0.05f * MathF.Pow(t / 0.05f, 1f / 1.3f);
