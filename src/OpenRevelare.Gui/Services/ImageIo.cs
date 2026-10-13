@@ -664,7 +664,7 @@ public static class ImageIo
 
     private static void RequirePipelineVersion(ColorPipelineVersion version)
     {
-        if (version is not ColorPipelineVersion.LegacyV1 and not ColorPipelineVersion.ManagedV2)
+        if (!version.IsManaged() && version != ColorPipelineVersion.LegacyV1)
             throw new ArgumentOutOfRangeException(nameof(version), version, "Unknown colour pipeline version.");
     }
 }

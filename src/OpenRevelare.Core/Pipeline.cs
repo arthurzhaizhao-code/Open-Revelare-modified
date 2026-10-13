@@ -47,7 +47,8 @@ public static class Pipeline
         return pipelineVersion switch
         {
             ColorPipelineVersion.LegacyV1 => DescribeLegacyPixels(pixels, cal),
-            ColorPipelineVersion.ManagedV2 => DescribeManagedPixels(pixels, cal),
+            ColorPipelineVersion.ManagedV2 or ColorPipelineVersion.SceneGradeV3 =>
+                DescribeManagedPixels(pixels, cal, pipelineVersion),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(pipelineVersion), pipelineVersion, "Unknown colour pipeline version."),
         };
@@ -117,7 +118,10 @@ public static class Pipeline
                 FingerprintUnavailableReason.LegacyPipelineHasNoVersionedRecipe));
     }
 
-    private static RenderedFrame DescribeManagedPixels(ImageBuffer pixels, FrameParams cal)
+    private static RenderedFrame DescribeManagedPixels(
+        ImageBuffer pixels,
+        FrameParams cal,
+        ColorPipelineVersion pipelineVersion = ColorPipelineVersion.ManagedV2)
     {
         ColorProfileRef requested;
         CharacterizedPixelEncoding encoding;
@@ -193,7 +197,7 @@ public static class Pipeline
         }
 
         var recipe = new OutputRecipe(
-            ColorPipelineVersion.ManagedV2,
+            pipelineVersion,
             requested,
             RenderingIntent.RelativeColorimetric,
             blackPointCompensation: false,
@@ -221,7 +225,7 @@ public static class Pipeline
     {
         if (pipelineVersion == ColorPipelineVersion.LegacyV1)
             return Render(source, cal);
-        if (pipelineVersion != ColorPipelineVersion.ManagedV2)
+        if (!pipelineVersion.IsManaged())
             throw new ArgumentOutOfRangeException(nameof(pipelineVersion), pipelineVersion, "Unknown colour pipeline version.");
 
         ArgumentNullException.ThrowIfNull(source);
@@ -247,17 +251,37 @@ public static class Pipeline
             // An extended target needs to know which output pixels are FILL — the sprocket mask
             // and the rotation's corners — because fill is not picture and must not be rendered
             // as one (see below). The SDR path never asks, so it stays bit-identical.
-            pixels = ProcessFrame(source.Pixels, scene, target.IsExtended, out bool[]? fill);
+            bool trackFill = target.IsExtended || pipelineVersion == ColorPipelineVersion.SceneGradeV3;
+            pixels = ProcessFrame(source.Pixels, scene, trackFill, out bool[]? fill);
             ColorSpaceDef analyticSource = AnalyticSourceSpaceFor(source, target);
+
+            if (pipelineVersion == ColorPipelineVersion.SceneGradeV3)
+            {
+                SceneGrade.Apply(pixels.Data, cal, analyticSource);
+                if (fill is not null)
+                    Sprocket.ApplyMask(pixels.Data, fill);
+            }
+
             ColorPipeline.ToOutputTargetFor(
                 pixels.Data,
                 cal,
                 target,
-                ColorPipelineVersion.ManagedV2,
+                pipelineVersion,
                 colorManagement,
                 analyticSource);
 
-            if (target.IsExtended)
+            if (pipelineVersion == ColorPipelineVersion.SceneGradeV3)
+            {
+                // V3's creative operations already ran on the calibrated positive before the
+                // selected display rendering.  The render output needs only its final bound.
+                if (target.IsExtended)
+                {
+                    HighlightRolloff.BoundAbove(pixels.Data, target.HighlightHeadroom);
+                    if (fill is not null)
+                        Sprocket.ApplyMask(pixels.Data, fill);
+                }
+            }
+            else if (target.IsExtended)
             {
                 // The shoulder itself ran inside step 4, exactly where the SDR rendering runs
                 // its own — they are one family of curves and differ only in where they aim
@@ -288,7 +312,7 @@ public static class Pipeline
 
         }
 
-        return DescribeRenderedPixels(pixels, cal, ColorPipelineVersion.ManagedV2);
+        return DescribeRenderedPixels(pixels, cal, pipelineVersion);
     }
 
     /// <summary>

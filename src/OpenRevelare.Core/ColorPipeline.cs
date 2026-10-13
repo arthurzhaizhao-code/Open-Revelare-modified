@@ -359,7 +359,7 @@ public static class ColorPipeline
             ToOutputSpaceFor(data, cal);
             return;
         }
-        if (pipelineVersion != ColorPipelineVersion.ManagedV2)
+        if (!pipelineVersion.IsManaged())
             throw new ArgumentOutOfRangeException(nameof(pipelineVersion), pipelineVersion, "Unknown colour pipeline version.");
 
         ArgumentNullException.ThrowIfNull(colorManagement);
@@ -433,7 +433,7 @@ public static class ColorPipeline
 
         if (!target.IsExtended)
         {
-            if (pipelineVersion == ColorPipelineVersion.ManagedV2
+            if (pipelineVersion.IsManaged()
                 && PrintLutFor(cal, target) is null
                 && analyticSource is ColorSpaceDef source)
             {
@@ -446,7 +446,7 @@ public static class ColorPipeline
             return;
         }
 
-        if (pipelineVersion != ColorPipelineVersion.ManagedV2)
+        if (!pipelineVersion.IsManaged())
             throw new ArgumentOutOfRangeException(nameof(pipelineVersion), pipelineVersion, "Extended targets exist only in ManagedV2.");
 
         if (PrintLutFor(cal, target) is { } applied)
@@ -738,7 +738,7 @@ public static class ColorPipeline
             ToOutputSpaceVia(data, lut, output);
             return;
         }
-        if (pipelineVersion != ColorPipelineVersion.ManagedV2)
+        if (!pipelineVersion.IsManaged())
             throw new ArgumentOutOfRangeException(nameof(pipelineVersion), pipelineVersion, "Unknown colour pipeline version.");
 
         ArgumentNullException.ThrowIfNull(colorManagement);

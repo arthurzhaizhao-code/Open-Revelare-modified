@@ -79,7 +79,7 @@
                         <Separator />
                         <MenuItem Header="{i18n:T '复制（按当前面板）'}" InputGesture="{i18n:Accel 'C'}"
                                   Click="OnCopyActiveClick" IsEnabled="{Binding HasImage}"
-                                  ToolTip.Tip="{i18n:T '整卷校准面板 → 复制 Cineon 标定；帧编辑面板 → 复制 Display 参数'}">
+                                  ToolTip.Tip="{i18n:T '整卷校准面板 → 复制 Cineon 标定；帧编辑面板 → 复制渲染前成片调整'}">
                             <MenuItem.Icon>
                                 <ctl:Icon Data="{StaticResource IcoCopy}" />
                             </MenuItem.Icon>
@@ -107,13 +107,13 @@
                                       IsEnabled="{Binding HasCalClipboard}" />
                             <MenuItem Header="{i18n:T '应用 Cineon 标定到整卷'}" Click="OnApplyCalToRollClick" />
                         </MenuItem>
-                        <MenuItem Header="{i18n:T '场景（Stage 2）'}" IsEnabled="{Binding HasImage}">
-                            <MenuItem Header="{i18n:T '复制 Display 参数'}" Click="OnCopySceneClick">
+                        <MenuItem Header="{i18n:T '成片调整（渲染前）'}" IsEnabled="{Binding HasImage}">
+                            <MenuItem Header="{i18n:T '复制成片调整'}" Click="OnCopySceneClick">
                                 <MenuItem.Icon>
                                     <ctl:Icon Data="{StaticResource IcoCopy}" />
                                 </MenuItem.Icon>
                             </MenuItem>
-                            <MenuItem Header="{i18n:T '粘贴 Display 参数到本帧'}" Click="OnPasteSceneToCurrentClick"
+                            <MenuItem Header="{i18n:T '粘贴成片调整到本帧'}" Click="OnPasteSceneToCurrentClick"
                                       IsEnabled="{Binding HasSceneClipboard}">
                                 <MenuItem.Icon>
                                     <ctl:Icon Data="{StaticResource IcoCheck}" />
@@ -497,7 +497,7 @@
                                            FontSize="11" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis"
                                            ToolTip.Tip="{Binding LegacyColorPipelineNotice}" />
-                                <Button Grid.Column="1" Content="{i18n:T '迁移到色彩管理版…'}"
+                                <Button Grid.Column="1" Content="{i18n:T '迁移到渲染前调整版…'}"
                                         Margin="8,0,0,0" Padding="8,3"
                                         Click="OnMigrateColorPipelineClick" />
                                 <Button Grid.Column="2" Classes="icon" Width="22" Height="22"
@@ -1297,9 +1297,9 @@
                                             </ToggleButton>
                                         </Grid>
                                         <ctl:SliderRow Label="{i18n:T '阴影'}" Minimum="-1" Maximum="1" Decimals="2" Increment="0.01" DefaultValue="0" Value="{Binding Shadows}" Bipolar="True" TrackBrush="{DynamicResource TrackLumBrush}"
-                                                       ToolTip.Tip="{i18n:T '调整照片阴影层次；新版会保留通道余量，避免单通道先溢出。'}" />
+                                                       ToolTip.Tip="{i18n:T '在标准显示渲染或 2383 之前调整阴影；使用独立平滑区域并保持线性色度。'}" />
                                         <ctl:SliderRow Label="{i18n:T '高光'}" Minimum="-1" Maximum="1" Decimals="2" Increment="0.01" DefaultValue="0" Value="{Binding Highlights}" Bipolar="True" TrackBrush="{DynamicResource TrackLumBrush}"
-                                                       ToolTip.Tip="{i18n:T '调整照片高光层次；不会改变 Cineon 的亮端标定。'}" />
+                                                       ToolTip.Tip="{i18n:T '在标准显示渲染或 2383 之前调整高光；不会改变 Cineon 的亮端标定。'}" />
                                         <Grid ColumnDefinitions="*,Auto">
                                             <ctl:SliderRow Grid.Column="0" Label="{i18n:T '白场'}" Minimum="-1" Maximum="1" Decimals="2" Increment="0.01" DefaultValue="0" Value="{Binding White}" Bipolar="True" TrackBrush="{DynamicResource TrackLumBrush}" />
                                             <ToggleButton Name="WhiteBtn" Grid.Column="1" Classes="sampling icon" Margin="6,0,0,0"

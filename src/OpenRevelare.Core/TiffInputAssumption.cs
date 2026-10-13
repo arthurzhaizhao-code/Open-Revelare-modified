@@ -69,7 +69,7 @@ public static class TiffInputAssumptionPolicy
         {
             true => TiffInputAssumption.Linear,
             false => TiffInputAssumption.Srgb,
-            null when pipelineVersion == ColorPipelineVersion.ManagedV2 =>
+            null when pipelineVersion.IsManaged() =>
                 TiffInputAssumption.Unspecified,
             null => TiffInputAssumption.LegacyByBitDepthCompatibility,
         };

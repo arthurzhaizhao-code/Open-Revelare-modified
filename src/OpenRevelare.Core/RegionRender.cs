@@ -137,7 +137,7 @@ public static class RegionRender
     {
         ArgumentNullException.ThrowIfNull(full);
         ArgumentNullException.ThrowIfNull(cal);
-        if (pipelineVersion is not (ColorPipelineVersion.LegacyV1 or ColorPipelineVersion.ManagedV2))
+        if (pipelineVersion != ColorPipelineVersion.LegacyV1 && !pipelineVersion.IsManaged())
             throw new ArgumentOutOfRangeException(
                 nameof(pipelineVersion), pipelineVersion, "Unknown colour pipeline version.");
 
@@ -350,7 +350,7 @@ public static class RegionRender
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(cal);
-        if (pipelineVersion is not (ColorPipelineVersion.LegacyV1 or ColorPipelineVersion.ManagedV2))
+        if (pipelineVersion != ColorPipelineVersion.LegacyV1 && !pipelineVersion.IsManaged())
             throw new ArgumentOutOfRangeException(
                 nameof(pipelineVersion), pipelineVersion, "Unknown colour pipeline version.");
 
@@ -386,13 +386,14 @@ public static class RegionRender
         ArgumentNullException.ThrowIfNull(colorManagement);
 
         var managed = RenderManagedPositiveFromSlice(
-            source.Pixels,
+            source,
             sourceX0,
             sourceY0,
             frameW,
             frameH,
             cal,
             roi,
+            pipelineVersion,
             colorManagement);
         return DescribeRegion(managed, cal, pipelineVersion, negative: false);
     }
@@ -458,13 +459,14 @@ public static class RegionRender
     /// </para>
     /// </summary>
     private static (ImageBuffer Image, Roi Realised) RenderManagedPositiveFromSlice(
-        ImageBuffer source,
+        WorkingFrame source,
         int sourceX0,
         int sourceY0,
         int frameW,
         int frameH,
         FrameParams cal,
         Roi roi,
+        ColorPipelineVersion pipelineVersion,
         IColorManagementEngine colorManagement)
     {
         // The geometry helpers never read OutputIntent, so the realised ROI is unaffected by the
@@ -473,8 +475,10 @@ public static class RegionRender
         scene.OutputIntent = OutputIntent.None;
         OutputTarget target = cal.ResolvedOutputTarget;
         var (pixels, realised) = RenderFromSlice(
-            source, sourceX0, sourceY0, frameW, frameH, scene, roi,
-            negative: false, negativeWb: null, trackFill: target.IsExtended, out bool[]? fill);
+            source.Pixels, sourceX0, sourceY0, frameW, frameH, scene, roi,
+            negative: false, negativeWb: null,
+            trackFill: target.IsExtended || pipelineVersion == ColorPipelineVersion.SceneGradeV3,
+            out bool[]? fill);
 
         if (cal.OutputIntent == OutputIntent.Basic)
         {
@@ -484,13 +488,31 @@ public static class RegionRender
             // labelled as the linear extended carrier — the "relabel without converting" failure
             // D-003 exists to prevent — and the highlights would vanish the moment the user
             // zoomed in. Each branch mirrors Pipeline.Render step for step.
+            ColorSpaceDef analyticSource = Pipeline.AnalyticSourceSpaceFor(source, target);
+            if (pipelineVersion == ColorPipelineVersion.SceneGradeV3)
+            {
+                SceneGrade.Apply(pixels.Data, cal, analyticSource);
+                if (fill is not null)
+                    Sprocket.ApplyMask(pixels.Data, fill);
+            }
+
             ColorPipeline.ToOutputTargetFor(
                 pixels.Data,
                 cal,
                 target,
-                ColorPipelineVersion.ManagedV2,
-                colorManagement);
-            if (target.IsExtended)
+                pipelineVersion,
+                colorManagement,
+                analyticSource);
+            if (pipelineVersion == ColorPipelineVersion.SceneGradeV3)
+            {
+                if (target.IsExtended)
+                {
+                    HighlightRolloff.BoundAbove(pixels.Data, target.HighlightHeadroom);
+                    if (fill is not null)
+                        Sprocket.ApplyMask(pixels.Data, fill);
+                }
+            }
+            else if (target.IsExtended)
             {
                 Stage2.ApplyManagedToExtendedTarget(pixels.Data, cal, target.HighlightHeadroom);
                 HighlightRolloff.BoundAbove(pixels.Data, target.HighlightHeadroom);

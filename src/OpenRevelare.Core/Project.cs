@@ -37,9 +37,9 @@ public static class Project
     {
         bool hasDust = data.Frames.Any(f => f.Params.DustEnabled || f.Params.DustSpots.Count > 0);
         if (hasDust) return FormatVersion;
-        return data.ColorPipelineVersion == ColorPipelineVersion.ManagedV2 ? 3 : MinimumSupportedFormatVersion;
+        return data.ColorPipelineVersion.IsManaged() ? 3 : MinimumSupportedFormatVersion;
     }
-    private const ColorPipelineVersion CurrentColorPipelineVersion = ColorPipelineVersion.ManagedV2;
+    public const ColorPipelineVersion CurrentColorPipelineVersion = ColorPipelineVersion.SceneGradeV3;
 
     // ── Public data model ───────────────────────────────────────────────────────
     public sealed class RollMeta
@@ -161,7 +161,7 @@ public static class Project
     /// Loading and saving deliberately never call this method: callers must make the migration
     /// decision at an interaction boundary where the possible appearance change can be disclosed.
     /// </summary>
-    public static void MigrateColorPipelineToV2(Data data)
+    public static void MigrateColorPipelineToCurrent(Data data)
     {
         ArgumentNullException.ThrowIfNull(data);
         _ = RequireSupportedColorPipelineVersion(data.ColorPipelineVersion);
@@ -174,7 +174,7 @@ public static class Project
         if (node is null) return ColorPipelineVersion.LegacyV1;
         if (node is not JsonValue value || !value.TryGetValue(out int raw))
             throw new InvalidDataException(CoreText.T(
-                "color_pipeline_version 必须是整数 1（旧版）或 2（色彩管理版）"));
+                "color_pipeline_version 必须是整数 1、2 或 3"));
         return RequireSupportedColorPipelineVersion((ColorPipelineVersion)raw);
     }
 
@@ -183,8 +183,9 @@ public static class Project
         {
             ColorPipelineVersion.LegacyV1 => version,
             ColorPipelineVersion.ManagedV2 => version,
+            ColorPipelineVersion.SceneGradeV3 => version,
             _ => throw new InvalidDataException(CoreText.F(
-                $"不支持的 color_pipeline_version {(int)version}（本版本支持 1 和 2）")),
+                $"不支持的 color_pipeline_version {(int)version}（本版本支持 1、2 和 3）")),
         };
 
     // ── Relink ──────────────────────────────────────────────────────────────────

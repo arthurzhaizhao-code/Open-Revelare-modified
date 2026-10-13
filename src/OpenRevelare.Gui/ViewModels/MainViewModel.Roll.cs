@@ -1734,7 +1734,7 @@ public partial class MainViewModel
             // The roll's target, off the params the cells are rendered with. A LegacyV1 roll
             // ignores its peak (D-013) and would come back normalized, so it gets no extended set.
             OutputTarget target = cellParams[0].ResolvedOutputTarget;
-            bool extended = target.IsExtended && pipelineVersion == ColorPipelineVersion.ManagedV2;
+            bool extended = target.IsExtended && pipelineVersion.IsManaged();
             ContactThumbs thumbs = await Task.Run(() =>
             {
                 var sdr = new List<ImageBuffer>(total);

@@ -21,6 +21,9 @@ public partial class MainViewModel
     public bool UsesLegacyColorPipeline =>
         _colorPipelineVersion == ColorPipelineVersion.LegacyV1;
 
+    public bool NeedsColorPipelineMigration =>
+        _colorPipelineVersion != Project.CurrentColorPipelineVersion;
+
     private bool _legacyNoticeDismissed;
 
     /// <summary>
@@ -32,7 +35,7 @@ public partial class MainViewModel
     /// closing it forfeits nothing.
     /// </summary>
     public bool ShowLegacyColorPipelineNotice =>
-        UsesLegacyColorPipeline && !_legacyNoticeDismissed;
+        NeedsColorPipelineMigration && !_legacyNoticeDismissed;
 
     public void DismissLegacyColorPipelineNotice()
     {
@@ -55,6 +58,23 @@ public partial class MainViewModel
     /// </summary>
     private string DescribeMigrationEffect()
     {
+        if (_colorPipelineVersion == ColorPipelineVersion.ManagedV2)
+        {
+            bool anyGrade = Frames.Any(frame =>
+            {
+                FrameParams p = frame.Params;
+                return p.WbGains.Any(g => Math.Abs(g - 1.0) > 1e-8)
+                       || p.ExposureEv != 0.0 || p.BlackPoint != 0.0 || p.WhitePoint != 1.0
+                       || p.Contrast != 0.0 || p.Highlights != 0.0 || p.Shadows != 0.0
+                       || p.Saturation != 0.0 || p.CurvePointsM.Count > 0
+                       || p.CurvePointsR.Count > 0 || p.CurvePointsG.Count > 0
+                       || p.CurvePointsB.Count > 0;
+            });
+            return anyGrade
+                ? Loc.T("这一卷已有成片调整。迁移后这些数值会保留，但因运算位置与影调算法改变，画面会重新解释；Dmin、Dmax、685 放置和 RGB 对齐不会变化。")
+                : Loc.T("这一卷的成片调整均为零，迁移不会改变当前画面；以后新增的调整会在显示渲染前运行。");
+        }
+
         bool anyLut = false, anyCurve = false, anyLegacyStage2 = false;
         foreach (RollFrame frame in Frames)
         {
@@ -83,16 +103,20 @@ public partial class MainViewModel
 
     /// <summary>The migration dialog's body: what it does, then what it does to THIS roll.</summary>
     public string MigrationDialogText =>
-        Loc.T("迁移会把此工程从旧版兼容渲染切换到 v2：Display 调节会在保留浮点余量的中间结果上运行，避免提升阴影时单通道溢出；嵌入 ICC 的 TIFF 会完整转换，print LUT 会转换到所选 exact output profile，曲线在目标编码中运行。工程保存后不会自动退回 v1。")
+        Loc.T("迁移会把此工程切换到 v3 渲染前成片调整：Dmin、Dmax、685 放置和 RGB 对齐保持不变；曝光、反差、黑白场、阴影、高光和饱和度会先作用于校准后的正像，再进入标准显示渲染或 2383。阴影与高光使用彼此独立的平滑区域，并保持线性 RGB 色度。工程保存后不会自动退回旧管线。")
         + "\n\n" + DescribeMigrationEffect();
 
     public string LegacyColorPipelineNotice => Loc.T(
-        "此工程仍使用旧版色彩管线。画面保持原样，但 Display 调节仍可能造成通道溢出；点击“迁移到色彩管理版…”可切换到保留浮点余量的新管线。");
+        "此工程仍使用较早的色彩管线，画面暂时保持原样。点击“迁移到渲染前调整版…”可切换到 v3；成片调整将位于标准显示渲染/2383之前。");
 
     public string ColorPipelineDiagnostic =>
-        (_colorPipelineVersion == ColorPipelineVersion.LegacyV1
-            ? "LegacyV1 (explicit compatibility)"
-            : "ManagedV2 (exact ICC)") + $" · TIFF input={DescribeTiffInput()}";
+        (_colorPipelineVersion switch
+        {
+            ColorPipelineVersion.LegacyV1 => "LegacyV1 (explicit compatibility)",
+            ColorPipelineVersion.ManagedV2 => "ManagedV2 (display-referred grade)",
+            ColorPipelineVersion.SceneGradeV3 => "SceneGradeV3 (pre-render grade)",
+            _ => _colorPipelineVersion.ToString(),
+        }) + $" · TIFF input={DescribeTiffInput()}";
 
     /// <summary>
     /// "Unspecified" is an implementation word for "the user set no override", which is the normal
@@ -119,7 +143,7 @@ public partial class MainViewModel
     /// would train the user to dismiss the one case that matters.
     /// </summary>
     public bool ShowTiffInputNotice =>
-        _colorPipelineVersion == ColorPipelineVersion.ManagedV2
+        _colorPipelineVersion.IsManaged()
         && _tiffInputAssumption == TiffInputAssumption.Unspecified
         && _tiffInputDetection is { IsConclusive: false }
         && !_tiffInputNoticeDismissed;
@@ -142,7 +166,7 @@ public partial class MainViewModel
     private void RefreshTiffInputDetection()
     {
         TiffInputDetection? detection = null;
-        if (_colorPipelineVersion == ColorPipelineVersion.ManagedV2
+        if (_colorPipelineVersion.IsManaged()
             && _tiffInputAssumption == TiffInputAssumption.Unspecified)
         {
             string? path = Frames
@@ -184,6 +208,7 @@ public partial class MainViewModel
         if (_colorPipelineVersion == value) return;
         _colorPipelineVersion = value;
         OnPropertyChanged(nameof(UsesLegacyColorPipeline));
+        OnPropertyChanged(nameof(NeedsColorPipelineMigration));
         OnPropertyChanged(nameof(CanChooseHdrPeak));
         NotifyHdrText();
         OnPropertyChanged(nameof(ShowLegacyColorPipelineNotice));
@@ -205,18 +230,18 @@ public partial class MainViewModel
     /// interaction invalidates every decode/render cache whose meaning depends on the pipeline
     /// version, then re-decodes the current frame before publishing v2 pixels.
     /// </summary>
-    public async Task MigrateColorPipelineToV2Async()
+    public async Task MigrateColorPipelineToCurrentAsync()
     {
-        if (!UsesLegacyColorPipeline) return;
+        if (!NeedsColorPipelineMigration) return;
 
         CommitLiveParams(CurrentFrame);
         Project.Data migration = BuildProjectData();
-        Project.MigrateColorPipelineToV2(migration);
+        Project.MigrateColorPipelineToCurrent(migration);
 
         SetColorPipelineVersion(migration.ColorPipelineVersion);
         await InvalidateColourStateAndReloadAsync();
         RefreshTiffInputDetection();
-        StatusText = Loc.T("已迁移到色彩管理版（v2）；工程将以新版本保存，外观变化不会自动回退。");
+        StatusText = Loc.T("已迁移到渲染前成片调整版（v3）；工程将以新版本保存，外观变化不会自动回退。");
     }
 
     /// <summary>
@@ -512,7 +537,7 @@ public partial class MainViewModel
                 {
                     ReportBackground(Loc.T("载入平场校正 …"));
                     lccField = LoadLccField(
-                        cfg.LccPath, ColorPipelineVersion.ManagedV2, cfg.TiffInputAssumption,
+                        cfg.LccPath, Project.CurrentColorPipelineVersion, cfg.TiffInputAssumption,
                         RawDecode.IsRawExtension(cfg.Paths[0]));
                     lccName = Path.GetFileName(cfg.LccPath);
                 }
@@ -525,7 +550,7 @@ public partial class MainViewModel
                     (dm, cm) = CalibratePathA(
                         calRgb,
                         cfg.Paths,
-                        ColorPipelineVersion.ManagedV2,
+                        Project.CurrentColorPipelineVersion,
                         cfg.TiffInputAssumption,
                         cachePreviews: false,
                         lccField);
@@ -776,7 +801,7 @@ public partial class MainViewModel
         _roll = null;
         _rollDirty = false;
         _sheetDirty = false;
-        SetColorPipelineVersion(ColorPipelineVersion.ManagedV2);
+        SetColorPipelineVersion(Project.CurrentColorPipelineVersion);
         // Startup/automation can call this lower-level entry without the import dialog. It may
         // open a profiled TIFF, but an untagged one must fail closed instead of inheriting the
         // previous roll's choice. LoadRollWithConfigAsync sets the deliberate choice first.

@@ -7,11 +7,11 @@ namespace OpenRevelare.Tests;
 public sealed class ProjectColorPipelineVersionTests
 {
     [Fact]
-    public void New_project_data_defaults_to_managed_v2()
+    public void New_project_data_defaults_to_scene_grade_v3()
     {
         var project = new Project.Data();
 
-        Assert.Equal(ColorPipelineVersion.ManagedV2, project.ColorPipelineVersion);
+        Assert.Equal(ColorPipelineVersion.SceneGradeV3, project.ColorPipelineVersion);
     }
 
     [Theory]
@@ -42,24 +42,24 @@ public sealed class ProjectColorPipelineVersionTests
     }
 
     [Fact]
-    public void Explicit_migration_is_the_only_operation_that_promotes_v1_to_v2()
+    public void Explicit_migration_is_the_only_operation_that_promotes_an_old_project_to_current()
     {
         Project.Data project = Project.Load(FixturePath("missing-display-referred-stage2.ncproj"));
 
-        Project.MigrateColorPipelineToV2(project);
+        Project.MigrateColorPipelineToCurrent(project);
 
-        Assert.Equal(ColorPipelineVersion.ManagedV2, project.ColorPipelineVersion);
+        Assert.Equal(ColorPipelineVersion.SceneGradeV3, project.ColorPipelineVersion);
         WithTempProject(path =>
         {
             Project.Save(path, project);
-            Assert.Equal(2, JsonNode.Parse(File.ReadAllText(path))!["color_pipeline_version"]!
+            Assert.Equal(3, JsonNode.Parse(File.ReadAllText(path))!["color_pipeline_version"]!
                 .GetValue<int>());
         });
     }
 
     [Theory]
     [InlineData("0")]
-    [InlineData("3")]
+    [InlineData("4")]
     [InlineData("\"2\"")]
     public void Load_rejects_unsupported_or_malformed_pipeline_versions_clearly(string value)
     {
@@ -83,7 +83,7 @@ public sealed class ProjectColorPipelineVersionTests
     [Fact]
     public void Save_rejects_an_unsupported_in_memory_pipeline_version()
     {
-        var project = new Project.Data { ColorPipelineVersion = (ColorPipelineVersion)3 };
+        var project = new Project.Data { ColorPipelineVersion = (ColorPipelineVersion)4 };
 
         WithTempProject(path =>
         {

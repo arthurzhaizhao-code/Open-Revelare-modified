@@ -732,7 +732,7 @@ public static class Stage2
         });
     }
 
-    private static float SampleLut(float[] lut, float x)
+    internal static float SampleLut(float[] lut, float x)
     {
         float idxF = x * (CurveLutSize - 1);
         int lo = (int)idxF;
@@ -750,7 +750,7 @@ public static class Stage2
     /// ends are interior points with the corners implied, and the curve ramps on to (0,0)/(1,1) as
     /// it always did.
     /// </summary>
-    private static float[]? BuildLut(List<(double X, double Y)> points, bool hasEndpoints)
+    internal static float[]? BuildLut(List<(double X, double Y)> points, bool hasEndpoints)
     {
         if (points.Count == 0) return null;
         var pts = points.OrderBy(p => p.X).ToList();

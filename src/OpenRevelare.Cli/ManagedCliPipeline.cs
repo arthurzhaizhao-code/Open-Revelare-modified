@@ -8,7 +8,7 @@ using OpenRevelare.Core;
 /// </summary>
 internal static class ManagedCliPipeline
 {
-    internal const ColorPipelineVersion PipelineVersion = ColorPipelineVersion.ManagedV2;
+    internal const ColorPipelineVersion PipelineVersion = ColorPipelineVersion.SceneGradeV3;
 
     internal static WorkingFrame LoadWorking(
         string path,

@@ -688,7 +688,7 @@ public static class TiffIO
             // select the historical per-bit-depth route, preserving their established look.
             return LoadWorkingFrame(path, inputIsSrgb: inputAssumption == TiffInputAssumption.Srgb);
         }
-        if (pipelineVersion != ColorPipelineVersion.ManagedV2)
+        if (!pipelineVersion.IsManaged())
             throw new ArgumentOutOfRangeException(nameof(pipelineVersion), pipelineVersion, "Unknown colour pipeline version.");
 
         ArgumentNullException.ThrowIfNull(colorManagement);
@@ -746,7 +746,7 @@ public static class TiffIO
         var region = new RegionRequest(rect, (int[])maxEdges.Clone());
         if (pipelineVersion == ColorPipelineVersion.LegacyV1)
             return LoadWorkingFrame(path, inputIsSrgb: inputAssumption == TiffInputAssumption.Srgb, region);
-        if (pipelineVersion != ColorPipelineVersion.ManagedV2)
+        if (!pipelineVersion.IsManaged())
             throw new ArgumentOutOfRangeException(nameof(pipelineVersion), pipelineVersion, "Unknown colour pipeline version.");
 
         ArgumentNullException.ThrowIfNull(colorManagement);

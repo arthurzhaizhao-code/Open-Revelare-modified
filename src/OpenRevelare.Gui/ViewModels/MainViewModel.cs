@@ -4502,7 +4502,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     // Independent from the .ncproj schema version. A loaded legacy roll must retain v1 until the
     // user explicitly opts into the managed pipeline; BuildProjectData creates a fresh snapshot,
     // so the version has to live with the open roll rather than rely on Project.Data's default.
-    private ColorPipelineVersion _colorPipelineVersion = ColorPipelineVersion.ManagedV2;
+    private ColorPipelineVersion _colorPipelineVersion = Project.CurrentColorPipelineVersion;
     // One assumption for the whole TIFF roll. It participates in every decode cache key; changing
     // it can never reuse pixels admitted under a different transfer/profile claim.
     private TiffInputAssumption _tiffInputAssumption =

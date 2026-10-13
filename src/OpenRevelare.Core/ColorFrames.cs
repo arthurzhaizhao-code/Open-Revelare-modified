@@ -98,6 +98,13 @@ public enum ColorPipelineVersion
 {
     LegacyV1 = 1,
     ManagedV2 = 2,
+    SceneGradeV3 = 3,
+}
+
+public static class ColorPipelineVersionExtensions
+{
+    public static bool IsManaged(this ColorPipelineVersion version) =>
+        version is ColorPipelineVersion.ManagedV2 or ColorPipelineVersion.SceneGradeV3;
 }
 
 public sealed record OutputRecipe
@@ -173,9 +180,9 @@ public abstract record RenderFingerprint
         ArgumentNullException.ThrowIfNull(pixels);
         ArgumentNullException.ThrowIfNull(encoding);
         ArgumentNullException.ThrowIfNull(recipe);
-        if (recipe.PipelineVersion != ColorPipelineVersion.ManagedV2)
+        if (!recipe.PipelineVersion.IsManaged())
             throw new ArgumentException(
-                "Only ManagedV2 renders have a versioned fingerprint recipe.", nameof(recipe));
+                "Only managed renders have a versioned fingerprint recipe.", nameof(recipe));
 
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(SchemaMarker);

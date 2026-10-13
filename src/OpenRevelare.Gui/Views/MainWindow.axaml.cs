@@ -2489,7 +2489,7 @@ public partial class MainWindow : Window
 
     private async void OnMigrateColorPipelineClick(object? sender, RoutedEventArgs e)
     {
-        if (Vm is null || !Vm.UsesLegacyColorPipeline) return;
+        if (Vm is null || !Vm.NeedsColorPipelineMigration) return;
         bool confirmed = false;
         // The body is computed from THIS roll rather than fixed: "画面可能变化" is true of every
         // project and actionable for none. See MainViewModel.DescribeMigrationEffect.
@@ -2498,7 +2498,7 @@ public partial class MainWindow : Window
             // must not perform it. Esc still cancels, via CloseButton.IsCancel.
             .WithAction(Loc.T("迁移并重新渲染"), Loc.T("取消"), () => confirmed = true, isDefault: false)
             .ShowDialog(this);
-        if (confirmed) await Vm.MigrateColorPipelineToV2Async();
+        if (confirmed) await Vm.MigrateColorPipelineToCurrentAsync();
     }
 
     // ── Roll management (add / virtual copy / remove) ───────────────────────────
