@@ -597,7 +597,9 @@ public sealed class ManagedPrintLutOutputTests
         FrameParams scene = parameters.Clone();
         scene.OutputIntent = OutputIntent.None;
         ImageBuffer expected = Pipeline.ProcessFrame(MakeSyntheticNegative(), scene);
-        SceneGrade.Apply(expected.Data, parameters, ColorSpaces.Rec709);
+        // The synthetic fixture is admitted as characterized working-space data, so V3 grades
+        // it in ACEScg before the print path converts it to the cube's Rec709/Cineon input.
+        SceneGrade.Apply(expected.Data, parameters, ColorPipeline.Working);
         CubeLut lut = Assert.IsType<CubeLut>(PrintLuts.Resolve(parameters.PrintLut));
         ColorPipeline.ToOutputSpaceVia(expected.Data, lut, ColorSpaces.Rec709);
         using var cmm = StubEngine.NeverCalled();
