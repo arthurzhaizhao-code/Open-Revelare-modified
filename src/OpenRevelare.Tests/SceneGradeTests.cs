@@ -87,6 +87,52 @@ public sealed class SceneGradeTests
         Assert.InRange(Math.Abs(pixels[3] - bright), 0f, 1e-7f);
     }
 
+    [Fact]
+    public void Black_control_is_local_and_does_not_create_a_shadow_shelf()
+    {
+        float[] pixels =
+        {
+            0.004f, 0.004f, 0.004f,
+            0.018f, 0.018f, 0.018f,
+            0.050f, 0.050f, 0.050f,
+            0.180f, 0.180f, 0.180f,
+        };
+        float[] original = (float[])pixels.Clone();
+
+        // BlackPoint 0.05 is the value stored by a modest -0.10 black slider move.
+        SceneGrade.Apply(pixels, new FrameParams { BlackPoint = 0.05 }, ColorSpaces.Srgb);
+
+        Assert.True(pixels[0] <= original[0]);
+        Assert.True(pixels[3] < original[3]);
+        Assert.True(pixels[6] < original[6]);
+        Assert.True(pixels[0] < pixels[3] && pixels[3] < pixels[6]);
+        Assert.InRange(Math.Abs(pixels[9] - original[9]), 0f, 1e-7f);
+    }
+
+    [Fact]
+    public void Saturation_has_useful_travel_in_log_channel_separation()
+    {
+        float[] pixel = { 0.24f, 0.12f, 0.06f };
+        float originalStops = MathF.Log2(pixel[0] / pixel[2]);
+
+        SceneGrade.Apply(pixel, new FrameParams { Saturation = 0.5 }, ColorSpaces.Srgb);
+
+        float gradedStops = MathF.Log2(pixel[0] / pixel[2]);
+        Assert.InRange(gradedStops / originalStops, 1.749f, 1.751f);
+        Assert.All(pixel, value => Assert.True(float.IsFinite(value) && value >= 0f));
+    }
+
+    [Fact]
+    public void Contrast_does_not_move_values_that_its_curve_leaves_unchanged()
+    {
+        float[] pixels = { 0.004f, 0.004f, 0.004f };
+        float[] original = (float[])pixels.Clone();
+
+        SceneGrade.Apply(pixels, new FrameParams { Contrast = 0.4 }, ColorSpaces.Srgb);
+
+        Assert.Equal(original, pixels);
+    }
+
     private static float Proxy(float value)
     {
         const float blackLin = 0.010797751f;
