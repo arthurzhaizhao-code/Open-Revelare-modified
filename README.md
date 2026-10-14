@@ -11,7 +11,7 @@
 <p align="center"><b>面向 macOS 的非官方彩色负片工作流修改版</b><br>在 OpenRevelare 1.8.4 基础上加入 NegBase 对标标定、RGB 通道对齐与专业示波器。</p>
 
 > [!IMPORTANT]
-> 这是由 `arthurzhaizhao-code` 维护的非官方修改版，并非 OpenRevelare 原作者发布。
+> 这是由个人维护的非官方修改版，并非 OpenRevelare 原作者发布。
 > 上游项目为 [Toshihiko-Lin/Open-Revelare](https://github.com/Toshihiko-Lin/Open-Revelare)。
 > 本仓库保留原项目的 GPL-3.0-only 许可证与作者署名，目前只发布 macOS 安装包。
 
