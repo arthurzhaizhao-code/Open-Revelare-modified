@@ -992,5 +992,6 @@
   "迁移会把此工程切换到 v4 原作者成片调整：Dmin、Dmax、685 放置和 RGB 对齐保持不变；先完成标准显示渲染或 2383，再由原作者的 Stage 2 处理曝光、反差、黑白场、阴影、高光、曲线和饱和度。工程保存后不会自动退回旧管线。": "Migration switches this project to v4 original finishing: Dmin, Dmax, 685 placement and RGB alignment stay unchanged; standard display rendering or 2383 runs first, then the original Stage 2 processes exposure, contrast, black and white points, shadows, highlights, curves and saturation. Saving will not automatically revert the pipeline.",
   "此工程仍使用较早的色彩管线，画面暂时保持原样。点击“迁移到原作者成片调整…”可切换到 v4；成片调整将在标准显示渲染/2383之后运行。": "This project still uses an earlier colour pipeline and currently preserves its appearance. Choose ‘Migrate to original finishing…’ to switch to v4; finishing adjustments then run after standard display rendering or 2383.",
   "已迁移到原作者成片调整版（v4）；工程将以新版本保存，外观变化不会自动回退。": "Migrated to original finishing (v4); the project will be saved in the new version and appearance changes will not revert automatically.",
-  "此卷仍是旧版色彩管线（v1），渲染按 D-013 冻结，HDR 不会生效。迁移到当前管线之后可用。": "This roll still uses the legacy colour pipeline (v1); rendering is frozen under D-013 and HDR is unavailable until it is migrated to the current pipeline."
+  "此卷仍是旧版色彩管线（v1），渲染按 D-013 冻结，HDR 不会生效。迁移到当前管线之后可用。": "This roll still uses the legacy colour pipeline (v1); rendering is frozen under D-013 and HDR is unavailable until it is migrated to the current pipeline.",
+  "左右拖动数值可精细调整；单击后仍可直接输入": "Drag the value left or right for fine adjustment; click to type directly"
 }

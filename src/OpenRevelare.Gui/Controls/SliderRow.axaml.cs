@@ -96,8 +96,14 @@ public partial class SliderRow : UserControl
     private bool _syncing;
     private bool _grabbed;
     private Slider? _sld;
+    private NumericUpDown? _spin;
     private Border? _centerFill;
     private Border? _zeroTick;
+    private bool _scrubCandidate;
+    private bool _scrubbing;
+    private double _scrubOriginX;
+    private double _scrubLastX;
+    private double _scrubResidualSteps;
 
     public SliderRow()
     {
@@ -107,6 +113,7 @@ public partial class SliderRow : UserControl
         // field compiles but is still null here.
         if (this.FindControl<Slider>("Sld") is not { } sld) return;
         _sld = sld;
+        _spin = this.FindControl<NumericUpDown>("Spin");
         _centerFill = this.FindControl<Border>("CenterFill");
         _zeroTick = this.FindControl<Border>("ZeroTick");
         sld.SizeChanged += (_, _) => UpdateMarks();
@@ -120,6 +127,20 @@ public partial class SliderRow : UserControl
         // Backstop: releasing outside the window, or anything else that steals capture, would
         // otherwise strand the preview in drag mode at half resolution.
         sld.PointerCaptureLost += (_, _) => Release();
+
+        if (_spin is { } spin)
+        {
+            // Let an ordinary click continue into NumericUpDown so the user can type. Only once
+            // the pointer has moved horizontally past the small threshold do the tunnelled move
+            // events become a Resolve-style numeric scrub and stop text selection underneath.
+            spin.AddHandler(PointerPressedEvent, OnSpinPointerPressed,
+                            RoutingStrategies.Tunnel, handledEventsToo: true);
+            spin.AddHandler(PointerMovedEvent, OnSpinPointerMoved,
+                            RoutingStrategies.Tunnel, handledEventsToo: true);
+            spin.AddHandler(PointerReleasedEvent, OnSpinPointerReleased,
+                            RoutingStrategies.Tunnel, handledEventsToo: true);
+            spin.PointerCaptureLost += OnSpinPointerCaptureLost;
+        }
     }
 
     private void Grab()
@@ -135,6 +156,88 @@ public partial class SliderRow : UserControl
         _grabbed = false;
         RaiseEvent(new RoutedEventArgs(InteractionEndedEvent));
     }
+
+    private void OnSpinPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_spin is not { } spin
+            || !e.GetCurrentPoint(spin).Properties.IsLeftButtonPressed)
+            return;
+
+        double x = e.GetPosition(spin).X;
+        _scrubCandidate = true;
+        _scrubbing = false;
+        _scrubOriginX = x;
+        _scrubLastX = x;
+        _scrubResidualSteps = 0.0;
+    }
+
+    private void OnSpinPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_scrubCandidate || _spin is not { } spin) return;
+        if (!e.GetCurrentPoint(spin).Properties.IsLeftButtonPressed)
+        {
+            EndSpinScrub();
+            return;
+        }
+
+        double x = e.GetPosition(spin).X;
+        double total = x - _scrubOriginX;
+        double dx = x - _scrubLastX;
+        _scrubLastX = x;
+
+        if (!_scrubbing)
+        {
+            if (Math.Abs(total) < ScrubStartPixels) return;
+            _scrubbing = true;
+            Grab();
+        }
+
+        // Five pixels produce one displayed precision step near the starting value. Distance
+        // gradually adds speed through a smooth bounded curve; it never jumps to an unbounded
+        // velocity, which gives the scrub the damped feel of Resolve's parameter fields.
+        _scrubResidualSteps += ScrubStepsForPixels(dx, total);
+        int wholeSteps = (int)Math.Truncate(_scrubResidualSteps);
+        if (wholeSteps != 0)
+        {
+            _scrubResidualSteps -= wholeSteps;
+            double quantum = ScrubQuantum(Decimals);
+            double next = Value + wholeSteps * quantum;
+            next = Math.Round(next / quantum, MidpointRounding.AwayFromZero) * quantum;
+            Value = Math.Clamp(next, Minimum, Maximum);
+        }
+        e.Handled = true;
+    }
+
+    private void OnSpinPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        bool wasScrubbing = _scrubbing;
+        EndSpinScrub();
+        if (wasScrubbing) e.Handled = true;
+    }
+
+    private void OnSpinPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e) =>
+        EndSpinScrub();
+
+    private void EndSpinScrub()
+    {
+        _scrubCandidate = false;
+        _scrubbing = false;
+        _scrubResidualSteps = 0.0;
+        Release();
+    }
+
+    internal static double ScrubQuantum(int decimals) =>
+        Math.Pow(10.0, -Math.Clamp(decimals, 0, 9));
+
+    internal static double ScrubAcceleration(double totalPixels)
+    {
+        double t = Math.Clamp(Math.Abs(totalPixels) / ScrubAccelerationDistance, 0.0, 1.0);
+        double smooth = t * t * (3.0 - 2.0 * t);
+        return 1.0 + (ScrubMaximumAcceleration - 1.0) * smooth;
+    }
+
+    internal static double ScrubStepsForPixels(double deltaPixels, double totalPixels) =>
+        deltaPixels / ScrubPixelsPerStep * ScrubAcceleration(totalPixels);
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
@@ -237,6 +340,10 @@ public partial class SliderRow : UserControl
 
     /// <summary>Thumb diameter in the app's Slider theme (App.axaml); the marks assume it.</summary>
     private const double ThumbSize = 14;
+    private const double ScrubStartPixels = 3;
+    private const double ScrubPixelsPerStep = 5;
+    private const double ScrubAccelerationDistance = 240;
+    private const double ScrubMaximumAcceleration = 4;
 
     private void OnLabelDoubleTapped(object? sender, TappedEventArgs e) => Value = DefaultValue;
 }

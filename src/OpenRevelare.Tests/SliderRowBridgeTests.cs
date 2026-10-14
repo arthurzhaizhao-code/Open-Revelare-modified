@@ -90,4 +90,30 @@ public class SliderRowBridgeTests
         Assert.Equal(0.42, row.Value, 9);
         Assert.Equal(0.42m, row.SpinValue);
     }
+
+    [Theory]
+    [InlineData(0, 1.0)]
+    [InlineData(1, 0.1)]
+    [InlineData(2, 0.01)]
+    [InlineData(3, 0.001)]
+    public void Numeric_scrub_uses_the_displayed_precision(int decimals, double expected)
+    {
+        Assert.Equal(expected, SliderRow.ScrubQuantum(decimals), 12);
+    }
+
+    [Fact]
+    public void Numeric_scrub_acceleration_is_gradual_and_bounded()
+    {
+        double near = SliderRow.ScrubAcceleration(0);
+        double middle = SliderRow.ScrubAcceleration(120);
+        double far = SliderRow.ScrubAcceleration(240);
+        double farther = SliderRow.ScrubAcceleration(1000);
+
+        Assert.Equal(1.0, near, 12);
+        Assert.InRange(middle, 1.0, 4.0);
+        Assert.Equal(4.0, far, 12);
+        Assert.Equal(far, farther, 12);
+        Assert.Equal(-SliderRow.ScrubStepsForPixels(5, 120),
+                     SliderRow.ScrubStepsForPixels(-5, 120), 12);
+    }
 }
