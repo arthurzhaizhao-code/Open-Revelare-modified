@@ -2,35 +2,55 @@
   <img src="docs/assets/logo.png" width="104" alt="OpenRevelare">
 </p>
 
-<h1 align="center">OpenRevelare</h1>
+<h1 align="center">OpenRevelare Modified</h1>
 
 <p align="center">
   <img src="src/OpenRevelare.Gui/Assets/branding/contact-sheet-wordmark.png" width="520" alt="OpenRevelare">
 </p>
 
-<p align="center"><b>基于物理模型的彩色负片反转工具</b><br>将翻拍 RAW 或扫描 TIFF 转换为可复现的正片。</p>
+<p align="center"><b>面向 macOS 的非官方彩色负片工作流修改版</b><br>在 OpenRevelare 1.8.4 基础上加入 NegBase 对标标定、RGB 通道对齐与专业示波器。</p>
+
+> [!IMPORTANT]
+> 这是由 `arthurzhaizhao-code` 维护的非官方修改版，并非 OpenRevelare 原作者发布。
+> 上游项目为 [Toshihiko-Lin/Open-Revelare](https://github.com/Toshihiko-Lin/Open-Revelare)。
+> 本仓库保留原项目的 GPL-3.0-only 许可证与作者署名，目前只发布 macOS 安装包。
 
 <p align="center">
-  <a href="https://github.com/Toshihiko-Lin/Open-Revelare/releases/latest"><img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64%20installer-1677ff?style=for-the-badge&logo=windows11&logoColor=white"></a>
-  <a href="https://github.com/Toshihiko-Lin/Open-Revelare/releases/latest"><img alt="Linux x86_64" src="https://img.shields.io/badge/Linux-x86__64%20AppImage-e95420?style=for-the-badge&logo=linux&logoColor=white"></a>
-  <a href="https://github.com/Toshihiko-Lin/Open-Revelare/releases/latest"><img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-111111?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/arthurzhaizhao-code/Open-Revelare-modified/releases/latest"><img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-111111?style=for-the-badge&logo=apple&logoColor=white"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Toshihiko-Lin/Open-Revelare/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Toshihiko-Lin/Open-Revelare?display_name=tag&sort=semver"></a>
-  <a href="https://github.com/Toshihiko-Lin/Open-Revelare/actions/workflows/ci.yml"><img alt="CI build status" src="https://github.com/Toshihiko-Lin/Open-Revelare/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/arthurzhaizhao-code/Open-Revelare-modified/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/arthurzhaizhao-code/Open-Revelare-modified?display_name=tag&sort=semver"></a>
+  <a href="https://github.com/arthurzhaizhao-code/Open-Revelare-modified/actions/workflows/ci.yml"><img alt="CI build status" src="https://github.com/arthurzhaizhao-code/Open-Revelare-modified/actions/workflows/ci.yml/badge.svg?branch=codex%2Fnegbase-parity"></a>
   <a href="LICENSE"><img alt="GNU GPL v3" src="https://img.shields.io/badge/license-GPL--3.0--only-2ea44f.svg"></a>
 </p>
 
 <p align="center"><a href="README.en.md">English</a> · <a href="#项目概览">中文</a></p>
 
 <p align="center">
-  <a href="#项目概览">概览</a> · <a href="#核心模型">模型</a> · <a href="#处理流程">流程</a> ·
+  <a href="#与上游的区别">修改内容</a> · <a href="#项目概览">概览</a> · <a href="#核心模型">模型</a> · <a href="#处理流程">流程</a> ·
   <a href="#界面与示例">界面</a> · <a href="#功能">功能</a> · <a href="#安装">安装</a> ·
   <a href="#从源码构建">构建</a> · <a href="#许可证与第三方组件">许可</a>
 </p>
 
 ---
+
+## 与上游的区别
+
+当前基线版本为 **1.8.4.1**，基于上游 **1.8.4**。本修改版集中服务于 macOS 胶片翻拍工作流：
+
+| 范围 | 本修改版 |
+|---|---|
+| 自动标定 | 以 Cineon 685 漫射白为固定默认目标，改进片基、画面边线与不透明导轨判别 |
+| RGB 对齐 | 在当前 D_min 固定不动的前提下，于 Cineon 信号域独立调整 R/G/B 通道 |
+| 示波器 | YRGB 分量图、10-bit Cineon 坐标、矢量示波器与肤色指示线；支持独立放大窗口 |
+| 成片调整 | 使用原作者的显示参照 Stage 2 处理位置，保留完整的摄影式调整响应 |
+| 参数交互 | 数值支持左右拖动精调，按显示精度步进并带平滑、有上限的加速 |
+| 发行平台 | 只构建 macOS Apple Silicon 与 Intel DMG，不发布 Windows/Linux 包 |
+
+具体改动见 [CHANGELOG.md](CHANGELOG.md)，NegBase 对标过程见
+[docs/NEGBASE_COMPARISON.md](docs/NEGBASE_COMPARISON.md)。未经明确验证的算法结论不会宣称为
+NegBase 的内部实现；本项目只依据可观察行为进行对标。
 
 ## 项目概览
 
@@ -39,7 +59,7 @@
 - **可解释**：片基、最大密度、通道平衡等参数均有明确含义。
 - **可复现**：工程参数保存在图像旁的 `.ncproj` 文件中，源文件不被修改。
 - **本地优先**：无需联网或账号；图像处理由共享 CPU Core 完成。
-- **跨平台**：C# / .NET 8 + Avalonia，支持 Windows、Linux 和 macOS。
+- **macOS 优先**：C# / .NET 8 + Avalonia；本修改版发布 Apple Silicon 与 Intel 两种 macOS 包。
 
 适用于相机翻拍或扫描的整卷底片处理、参数归档和跨设备重算。支持 HDR 编辑与导出；Linux 屏幕预览目前明确使用 SDR 回退。不提供逐卷色卡标定；文物翻拍、商业存档和科研用途可使用 [DiVERE](https://github.com/flipswitchingmonkey/DiVERE)。
 
@@ -113,7 +133,8 @@
 | 反转 | Cineon 密度域反转、自动标定、窄带光源解耦（Path A）、黑白负片模式 |
 | 色彩 | ACEScg 工作空间；sRGB、Display P3、Adobe RGB 输出；精确 ICC 管理；Stage 2 调整 |
 | 预处理 | LCC 平场、镜头畸变、暗角、齿孔遮罩和几何裁切，均在线性光域完成 |
-| 工作流 | 按卷管理、整卷同步、虚拟副本、画幅预设、80 步撤销重做、直方图与波形图 |
+| 工作流 | 按卷管理、整卷同步、独立 RGB 通道对齐、虚拟副本、画幅预设、80 步撤销重做 |
+| 示波器 | 直方图、YRGB 分量图、10-bit Cineon 坐标、矢量示波器、肤色指示线与独立放大窗口 |
 | 输出 | 16-bit TIFF、JPEG、线性 DNG、32-bit 浮点场景线性 ACEScg TIFF、HDR 增益图 JPEG；文件名模板、缩放和锐化选项 |
 | 风格 / HDR | Cineon 输入 `.cube` 印片风格、SDR/HDR 整卷渲染、以档数表示的 HDR 上限、HDR 印样 |
 | 报告 | 本帧技术报告，记录输入域、片基来源和反转参数 |
@@ -138,32 +159,23 @@ $$T_{pos} = 10^{\left(\frac{R_{out}}{D_{max}[c]}D[c]-R_{out}\right)}$$
 
 ## 安装
 
-发行包位于 [Releases](https://github.com/Toshihiko-Lin/Open-Revelare/releases/latest)，已包含 .NET 运行时。
+本修改版安装包位于 [Releases](https://github.com/arthurzhaizhao-code/Open-Revelare-modified/releases/latest)，已包含 .NET 运行时。
 
 | 平台 | 包 | 状态与要求 |
 |---|---|---|
-| Windows 10/11 x64 | `setup.exe` | 正式版；无需额外依赖 |
-| Linux x86_64 | `.AppImage` | 公测；glibc ≥ 2.35 |
-| macOS Apple Silicon | `-arm64.dmg` | 公测；macOS 12+，尚无真机验证 |
-| macOS Intel | `-x86_64.dmg` | 公测；macOS 12+，尚无真机验证 |
+| macOS Apple Silicon | `-arm64.dmg` | macOS 12+；主要测试平台 |
+| macOS Intel | `-x86_64.dmg` | macOS 12+；自动构建与装配检查 |
+
+Windows 与 Linux 用户请使用[上游官方版本](https://github.com/Toshihiko-Lin/Open-Revelare/releases/latest)。
 
 <details>
 <summary>平台提示</summary>
 
-- **Windows**：若出现 SmartScreen 提示，选择「更多信息 → 仍要运行」。
 - **macOS**：首次启动若提示无法验证开发者，可在「系统设置 → 隐私与安全性 → 仍要打开」确认，或执行：
 
   ```bash
   xattr -dr com.apple.quarantine /Applications/OpenRevelare.app
   ```
-
-- **Linux**：
-
-  ```bash
-  chmod +x OpenRevelare-*.AppImage && ./OpenRevelare-*.AppImage
-  ```
-
-  若无法直接启动，可添加 `--appimage-extract-and-run`。Linux 当前使用 SDR 预览；HDR 编辑与导出仍可用。
 
 </details>
 
@@ -184,8 +196,9 @@ $$T_{pos} = 10^{\left(\frac{R_{out}}{D_{max}[c]}D[c]-R_{out}\right)}$$
 需要 [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)。
 
 ```bash
-git clone https://github.com/Toshihiko-Lin/Open-Revelare.git
-cd Open-Revelare
+git clone https://github.com/arthurzhaizhao-code/Open-Revelare-modified.git
+cd Open-Revelare-modified
+git switch codex/negbase-parity
 dotnet build -c Release
 dotnet test -c Release
 dotnet run --project src/OpenRevelare.Gui
@@ -211,7 +224,9 @@ dotnet run --project src/OpenRevelare.Cli -- -i neg.tiff -o pos.tiff --input-lin
 
 ## 项目来源与致谢
 
-项目最初是作者用于个人胶片翻拍的工具，经过用户反馈和底层重构后，于 2026 年 8 月以跨平台开源项目发布。感谢以下用户对早期开发与完善提供的支持：
+本仓库派生自 [Toshihiko-Lin/Open-Revelare](https://github.com/Toshihiko-Lin/Open-Revelare)，原项目由 Toshihiko-Lin 创建并以 GPL-3.0-only 发布。本修改版维护者感谢原作者及上游贡献者提供完整的应用基础。
+
+以下名单来自上游项目，感谢他们对原项目早期开发与完善提供的支持：
 
 - 豆腐
 - Caramello_焦糖玛奇朵
@@ -219,22 +234,13 @@ dotnet run --project src/OpenRevelare.Cli -- -i neg.tiff -o pos.tiff --input-lin
 - jamais
 - hhd
 
-## 项目支持
-
-项目由个人持续维护，核心功能以 GPL-3.0-only 开源。若项目对工作流程有帮助，可通过以下方式提供支持：
-
-<p align="center">
-  <img src="docs/assets/donate-wechat.png" width="220" alt="微信支付">
-  <img src="docs/assets/donate-alipay.png" width="220" alt="支付宝">
-</p>
-
 ## 限制与反馈
 
 - 不提供逐卷色卡标定。
 - 8-bit TIFF 暗部可能出现色带，建议使用 16-bit 输入。
-- Linux 使用明确标注的 SDR 屏幕预览回退，但 HDR 编辑和导出仍可用。
-- macOS 原生呈现仍待真机验证；TIFF/CPU 渲染不受影响。
+- 本修改版不提供 Windows 或 Linux 安装包。
+- Intel 安装包通过自动构建与装配检查，但主要交互验证在 Apple Silicon 上进行。
 
-请通过 [issue](https://github.com/Toshihiko-Lin/Open-Revelare/issues) 报告问题，并附系统版本、相机或扫描仪型号、输入格式与错误信息；不要上传含隐私内容的原片。
+本修改版的问题请提交到[当前仓库 Issues](https://github.com/arthurzhaizhao-code/Open-Revelare-modified/issues)；可确认属于上游的问题再提交到[官方仓库](https://github.com/Toshihiko-Lin/Open-Revelare/issues)。请附系统版本、Mac 型号、相机或扫描仪型号、输入格式与错误信息，不要上传含隐私内容的原片。
 
 <p align="center"><sub>OpenRevelare 以 GPL-3.0-only 开源发布。</sub></p>
