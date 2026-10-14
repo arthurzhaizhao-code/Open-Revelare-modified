@@ -53,7 +53,6 @@
         </Grid>
         <NumericUpDown Name="Spin"
                        Grid.Column="2"
-                       Cursor="SizeWestEast"
                        Minimum="{Binding Minimum, ElementName=Root}"
                        Maximum="{Binding Maximum, ElementName=Root}"
                        Value="{Binding SpinValue, ElementName=Root, Mode=TwoWay}"

@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 
 namespace OpenRevelare.Gui.Controls;
 
@@ -240,6 +241,16 @@ public partial class SliderRow : UserControl
         deltaPixels / ScrubPixelsPerStep * ScrubAcceleration(totalPixels);
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        // Cursor objects need the platform cursor factory. Creating this in XAML also runs in
+        // headless property tests, before a platform exists; defer it until the real window has
+        // attached while keeping standalone SliderRow tests platform-independent.
+        if (_spin is { } spin)
+            spin.Cursor ??= new Cursor(StandardCursorType.SizeWestEast);
+    }
 
     public string Label { get => GetValue(LabelProperty); set => SetValue(LabelProperty, value); }
     public double Minimum { get => GetValue(MinimumProperty); set => SetValue(MinimumProperty, value); }
