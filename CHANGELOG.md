@@ -1,5 +1,31 @@
 # OpenRevelare — 更新日志
 
+## v1.8.4.1（2026-10-14）
+
+这是基于官方 OpenRevelare 1.8.4 建立的首个修改版基线。
+
+**新增与改进**
+
+- 新增 YRGB 分量图、矢量示波器、10-bit Cineon 坐标和可独立放大的示波器窗口。
+- 新增独立 RGB 通道对齐；以当前 D_min 为固定基础，在 Cineon 信号域分别调整三个通道。
+- 自动标定采用固定的 Cineon 685 漫射白目标，并加强片基、画面边线和不透明导轨的空间判别。
+- 成片调整恢复为原作者的显示参照处理位置，保留完整的摄影式白场、黑场、反差、高光、阴影与饱和度响应。
+- 所有通用滑块的数值支持左右拖动精调：按显示小数位步进，并以有上限的平滑加速提供阻尼手感。
+- 发行流程只构建 macOS Apple Silicon 与 Intel 安装包。
+
+---
+
+This is the first modified baseline built on upstream OpenRevelare 1.8.4.
+
+**Added and improved**
+
+- Added YRGB parade, vectorscope, selectable 10-bit Cineon scale, and independently enlarged scope windows.
+- Added independent RGB channel alignment in Cineon signal space while keeping the current D_min fixed.
+- Standardised automatic calibration on Cineon code 685 diffuse white and strengthened spatial rejection of film borders, frame lines and opaque rails.
+- Restored the author's display-referred placement for finishing controls, preserving the full photographic response of whites, blacks, contrast, highlights, shadows and saturation.
+- Added horizontal numeric scrubbing to every shared slider row, using displayed decimal precision with smooth, bounded acceleration.
+- Limited release packaging to Apple Silicon and Intel macOS builds.
+
 ## v1.8.4（2026-10-11）
 
 **改进**
